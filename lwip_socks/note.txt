@@ -1,0 +1,23 @@
+MEM_SIZE
+MEM_USE_POOLS
+
+lwipopts.h会覆盖opt.h里面的宏定义
+ethernet_input tcpip_input 没有对输入数据包的目标网卡地址判断，导致非本网卡的数据包也处理
+tcpip_tcp_timer(void *)
+sys_check_timeouts()
+tcpip_timeouts_mbox_fetch(lwip_mbox *, void * *)
+tcpip_thread(void *)
+
+
+更新接收窗口tcp_recved()
+其实在用户接收到数据之后，应该调用一下这个函数来更新接收窗口，因为内核不知道应用层是否真正接收到数据， 
+如果不调用这个函数，就没法进行确认，而发送的一方会认为对方没有接收到，因此会重发数据。
+在这个函数中， 它会调用tcp_update_rcv_ann_wnd()函数进行更新接收窗口，以告知发送方能发送多大的数据，
+参数pcb是对应的TCP连接控制块， len表示应用程序已经处理完的数据长度，那么接收窗口也会增大len字节的长度
+
+PC机无法与LWIP建立TCP连接
+问题：PC机能够与LWIP设备PING操作成功，但是无法建立TCP连接。
+
+原因：通过代码跟踪，发现LWIP发出了SYN+ACK数据包，但是PC机无法接收该握手数据包，该数据包为60字节，小于以太网的最小长度（64字节），而LWIP设备的EMAC没有设置短小数据包填充功能，导致PC机无法接收该短数据包。
+
+解决：使能EMAC的短小数据包填充功能。
