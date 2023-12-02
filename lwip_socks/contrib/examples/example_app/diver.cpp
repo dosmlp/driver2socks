@@ -19,6 +19,7 @@ extern "C" {
 #include "lwip/ip_addr.h"
 
 #include "lwip/tcp.h"
+#include "lwip/priv/tcpip_priv.h"
 #include "lwip/udp.h"
 #include "lwip/dns.h"
 #include "lwip/dhcp.h"
@@ -44,6 +45,21 @@ struct ConnectCtx
     UINT32 IfIdx;                       /* Packet's interface index. */
     UINT32 SubIfIdx;                    /* Packet's sub-interface index. */
 
+};
+struct InitTcpArg {
+    struct netif* net_if;
+    uint32_t ip[4];
+    uint16_t port;
+    bool is_ipv4;
+    void* msg;
+    InitTcpArg()
+    {
+        net_if = nullptr;
+        memset(ip, 0, 16);
+        port = 0;
+        is_ipv4 = true;
+        msg = nullptr;
+    }
 };
 static void
 status_callback(struct netif* state_netif)
@@ -156,6 +172,7 @@ err_t netif_ip_output(struct netif* netif, struct pbuf* p, const ip4_addr_t* ipa
         if (tcp_hdr->Fin == 1) std::cout << "Fin" << std::endl;
         std::cout << "tcp in++++++++++++++++" << std::endl;
     }
+    
     if (p->len < 64) {
         uint8_t d[64] = { 0 };
         memcpy(d, p->payload, p->len);
@@ -185,7 +202,14 @@ pcapif_init(struct netif* netif)
     return ERR_OK;
 }
 
+void addTcp(void* arg)
+{
+    InitTcpArg* tcp_arg = (InitTcpArg*)arg;
+    tcpecho_raw_init(tcp_arg->net_if, tcp_arg->ip, tcp_arg->port, tcp_arg->is_ipv4);
 
+    tcpip_callbackmsg_delete((tcpip_callback_msg*)tcp_arg->msg);
+    delete tcp_arg;
+}
 
 void netifInit(struct netif* net_if,VOID* dest_ip,uint16_t port,bool is_ipv4)
 {
@@ -208,7 +232,16 @@ void netifInit(struct netif* net_if,VOID* dest_ip,uint16_t port,bool is_ipv4)
         net_if->flags |= NETIF_FLAG_UP;
         //netif_set_up(net_if);
         net_if->mtu = 1500;
-        tcpecho_raw_init(net_if,ip,port,is_ipv4);
+
+        InitTcpArg* tcp_arg = new InitTcpArg;
+        struct tcpip_callback_msg* cb_msg = tcpip_callbackmsg_new(addTcp, tcp_arg);
+        tcp_arg->net_if = net_if;
+        memcpy(tcp_arg->ip, ip, 4 * sizeof(uint32_t));
+        tcp_arg->port = port;
+        tcp_arg->is_ipv4 = is_ipv4;
+        tcp_arg->msg = cb_msg;
+        
+        tcpip_callbackmsg_trycallback(cb_msg);
     } else {
         WinDivertHelperHtonIpv6Address(ip, ip);
 
@@ -222,7 +255,16 @@ void netifInit(struct netif* net_if,VOID* dest_ip,uint16_t port,bool is_ipv4)
         //netif_set_link_callback(net_if, link_callback);
         netif_set_link_up(net_if);
         netif_set_up(net_if);
-        tcpecho_raw_init(net_if,ip, port, is_ipv4);
+
+        InitTcpArg* tcp_arg = new InitTcpArg;
+        struct tcpip_callback_msg* cb_msg = tcpip_callbackmsg_new(addTcp, tcp_arg);
+        tcp_arg->net_if = net_if;
+        memcpy(tcp_arg->ip, ip, 4 * sizeof(uint32_t));
+        tcp_arg->port = port;
+        tcp_arg->is_ipv4 = is_ipv4;
+        tcp_arg->msg = cb_msg;
+
+        tcpip_callbackmsg_trycallback(cb_msg);
     }
 
 }

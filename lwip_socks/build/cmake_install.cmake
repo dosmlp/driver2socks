@@ -1,8 +1,8 @@
-# Install script for directory: D:/3rd/lwip-2.2.0
+# Install script for directory: D:/3rd/git_repo/driver2socks/lwip_socks
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
-  set(CMAKE_INSTALL_PREFIX "D:/3rd/lwIP")
+  set(CMAKE_INSTALL_PREFIX "C:/Program Files/lwIP")
 endif()
 string(REGEX REPLACE "/$" "" CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
@@ -34,7 +34,7 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
-  include("D:/3rd/lwip-2.2.0/build/contrib/ports/win32/example_app/cmake_install.cmake")
+  include("D:/3rd/git_repo/driver2socks/lwip_socks/build/contrib/ports/win32/example_app/cmake_install.cmake")
 
 endif()
 
@@ -46,5 +46,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "D:/3rd/lwip-2.2.0/build/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "D:/3rd/git_repo/driver2socks/lwip_socks/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
