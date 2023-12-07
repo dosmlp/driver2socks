@@ -44,11 +44,16 @@
 #include "lwip/debug.h"
 #include "lwip/stats.h"
 #include "lwip/tcp.h"
+#include "lwip/tcpip.h"
+#include "async_simple/coro/Lazy.h"
 #include "tcpecho_raw.h"
+#include "common.h"
+#include "iocontext.h"
 
 #if LWIP_TCP && LWIP_CALLBACK_API
 
 static struct tcp_pcb *tcpecho_raw_pcb;
+std::unordered_map<void*, socks::socks_client*> map_sc;
 
 enum tcpecho_raw_states
 {
@@ -81,13 +86,13 @@ tcpecho_raw_free(struct tcpecho_raw_state *es)
 }
 
 static void
-tcpecho_raw_close(struct tcp_pcb *tpcb, struct tcpecho_raw_state *es)
+tcpecho_raw_close(struct tcp_pcb *tpcb)
 {
     //tcp_arg(tpcb, NULL);
-    //tcp_sent(tpcb, NULL);
-    //tcp_recv(tpcb, NULL);
-    //tcp_err(tpcb, NULL);
-    //tcp_poll(tpcb, NULL, 0);
+    tcp_sent(tpcb, NULL);
+    tcp_recv(tpcb, NULL);
+    tcp_err(tpcb, NULL);
+    tcp_poll(tpcb, NULL, 0);
 
     //tcpecho_raw_free(es);
 
@@ -135,13 +140,11 @@ tcpecho_raw_error(void *arg, err_t err)
 {
     printf(__FUNCTION__);
     printf("\n");
-  struct tcpecho_raw_state *es;
 
   LWIP_UNUSED_ARG(err);
 
-  es = (struct tcpecho_raw_state *)arg;
 
-  tcpecho_raw_free(es);
+  //tcpecho_raw_free(es);
 }
 
 static err_t
@@ -175,7 +178,7 @@ tcpecho_raw_sent(void *arg, struct tcp_pcb *tpcb, u16_t len)
   } else {
     /* no more pbufs to send */
     if(es->state == ES_CLOSING) {
-      tcpecho_raw_close(tpcb, es);
+      tcpecho_raw_close(tpcb);
     }
   }
   return ERR_OK;
@@ -185,11 +188,17 @@ static err_t
 tcpecho_raw_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 {
     if (p == NULL) {
-        tcpecho_raw_close(tpcb, NULL);
+        tcpecho_raw_close(tpcb);
     }
     else {
+        uint8_t* d = new uint8_t[p->tot_len];
+        pbuf2Data(p, d, p->tot_len);
+        uint32_t ssize = async_simple::coro::syncAwait(map_sc[(void*)tpcb]->sendData(d, p->tot_len));
+        delete[] d;
+        printf("recv:%p\n", tpcb);
         tcp_recved(tpcb, p->tot_len);
         pbuf_free(p);
+        tcp_write(tpcb, "rec", 4, 1);
     }
     return ERR_OK;
 //////////////////////////////////
@@ -203,7 +212,7 @@ tcpecho_raw_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
     es->state = ES_CLOSING;
     if(es->p == NULL) {
       /* we're done sending, close it */
-      tcpecho_raw_close(tpcb, es);
+      tcpecho_raw_close(tpcb);
     } else {
       /* we're not done yet */
       tcpecho_raw_send(tpcb, es);
@@ -242,16 +251,49 @@ tcpecho_raw_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
   }
   return ret_err;
 }
-
+struct SendDataArg {
+    uint8_t* data = nullptr;
+    uint32_t len = 0;
+    tcp_pcb* pcb = nullptr;
+    void* msg = nullptr;
+    SendDataArg(uint32_t len)
+    {
+        if (len > 0) {
+            this->data = new uint8_t[len];
+            this->len = len;
+        }
+    }
+    ~SendDataArg()
+    {
+        if (data) delete[] data;
+        if (msg) tcpip_callbackmsg_delete((struct tcpip_callback_msg*)msg);
+    }
+};
+void callback_send(void* arg)
+{
+    SendDataArg* dataarg = (SendDataArg*)arg;
+    if (dataarg->data != nullptr) {
+        tcp_write(dataarg->pcb, dataarg->data, dataarg->len,1);
+    } else {
+        tcpecho_raw_close(dataarg->pcb);
+        std::cout << "tcpecho_raw_close\n";
+        socks::socks_client* sc = map_sc[dataarg->pcb];
+        delete sc;
+        map_sc.erase(dataarg->pcb);
+    }
+    
+    delete dataarg;
+}
 static err_t
 tcpecho_raw_accept(void *arg, struct tcp_pcb *newpcb, err_t err)
 {
+    if (newpcb == nullptr) {
+        printf(__FUNCTION__":newpcb is null!\n");
+        return ERR_ARG;
+    }
+    printf("accept:%p\n", newpcb);
     tcp_arg(newpcb, arg);
     err_t ret_err;
-
-    if ((err != ERR_OK) || (newpcb == NULL)) {
-        return ERR_VAL;
-    }
 
     /* 现在就设置其优先级。 当 pcb 用完时，可以中止低优先级的 pcb，以创建优先级更高的新 pcb。新的优先级更高的 pcb。*/
     tcp_setprio(newpcb, TCP_PRIO_MIN);
@@ -266,7 +308,56 @@ tcpecho_raw_accept(void *arg, struct tcp_pcb *newpcb, err_t err)
     tcp_sent(newpcb, tcpecho_raw_sent);
     
     ret_err = ERR_OK;
+    ConnectCtx* ctx = (ConnectCtx*)(((struct netif*)arg)->state);
+    auto sc = new socks::socks_client(IoContext::getIoContext());
+    map_sc.emplace(std::make_pair((void*)newpcb,sc));
 
+    //char remote_ip[40] = { 0 };
+    //WinDivertHelperFormatIPv4Address(ntohl(addr.Socket.RemoteAddr[0]), remote_ip, 40);
+    std::string prxoy_ip = "127.0.0.1";
+    std::string proxy_port = "7890";
+    std::string rip = asio::ip::make_address_v4(ntohl(newpcb->local_ip.u_addr.ip4.addr)).to_string();
+    std::string port = std::to_string(newpcb->local_port);
+    sc->start_socks(prxoy_ip, proxy_port,
+        rip, port, [](const asio::error_code& ec) {
+            std::cout << "socks5 error:" << ec.message() << "\n";
+        }).start([](async_simple::Try<void> Result) {
+            if (Result.hasError()) {
+                try {
+                    std::rethrow_exception(Result.getException());
+                }
+                catch (const std::exception& e) {
+                    std::cout << e.what() << "\n";
+                }
+            } else
+                std::cout << "socks5 connect successfully.\n";
+            });
+
+    sc->ctx = newpcb;
+    
+    sc->asyncRead([](asio::error_code ec, uint8_t* data, uint32_t len,void* pcb){
+
+        SendDataArg* arg = new SendDataArg(len);
+        if (len <= 0 || ec || data == nullptr) {
+
+        } else {
+            memcpy(arg->data, data, len);
+        }
+        arg->pcb = (tcp_pcb*)pcb;
+        struct tcpip_callback_msg* cb_msg = tcpip_callbackmsg_new(callback_send, arg);
+        arg->msg = cb_msg;
+        tcpip_callbackmsg_trycallback(cb_msg);
+        }).start([](async_simple::Try<void> Result) {
+            if (Result.hasError()) {
+                try {
+                    std::rethrow_exception(Result.getException());
+                }
+                catch (const std::exception& e) {
+                    std::cout << e.what() << "\n";
+                }
+            } else
+                std::cout << "asyncRead successfully.\n";
+            });
     return ret_err;
 }
 
@@ -275,8 +366,9 @@ tcpecho_raw_init(struct netif* net_if, uint32_t* dest_ip,uint16_t port,uint8_t i
 {
     if (is_ipv4) {
         tcpecho_raw_pcb = tcp_new_ip_type(IPADDR_TYPE_V4);
-        tcpecho_raw_pcb->callback_arg = net_if;
+        
         if (tcpecho_raw_pcb != NULL) {
+            tcpecho_raw_pcb->callback_arg = net_if;
             err_t err;
             ip_addr_t addr;
             addr.type = IPADDR_TYPE_V4;
@@ -290,10 +382,12 @@ tcpecho_raw_init(struct netif* net_if, uint32_t* dest_ip,uint16_t port,uint8_t i
             }
         } else {
             /* abort? output diagnostic? */
+            printf("tcp_new_ip_type v4 null!\n");
         }
     } else {
         tcpecho_raw_pcb = tcp_new_ip_type(IPADDR_TYPE_V6);
         if (tcpecho_raw_pcb != NULL) {
+            tcpecho_raw_pcb->callback_arg = net_if;
             err_t err;
             ip_addr_t addr;
             addr.type = IPADDR_TYPE_V6;
@@ -307,6 +401,7 @@ tcpecho_raw_init(struct netif* net_if, uint32_t* dest_ip,uint16_t port,uint8_t i
             }
         } else {
             /* abort? output diagnostic? */
+            printf("tcp_new_ip_type v6 null!\n");
         }
     }
 

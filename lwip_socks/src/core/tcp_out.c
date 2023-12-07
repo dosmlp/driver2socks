@@ -1294,6 +1294,7 @@ tcp_output(struct tcp_pcb *pcb)
   //fuckyou
   //netif = tcp_route(pcb, &pcb->local_ip, &pcb->remote_ip);
   netif = (struct netif*)pcb->callback_arg;
+  printf("tcp_output:%p", pcb);
   if (netif == NULL) {
     return ERR_RTE;
   }
@@ -1933,6 +1934,7 @@ tcp_output_control_segment(const struct tcp_pcb *pcb, struct pbuf *p,
   //fuckyou
   //netif = tcp_route(pcb, src, dst);
   netif = pcb->callback_arg;
+  printf("tcp_output_control_segment:%p", pcb);
   if (netif == NULL) {
     pbuf_free(p);
     return ERR_RTE;

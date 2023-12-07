@@ -1,6 +1,5 @@
 extern "C" {
 #include <windivert.h>
-#include "apps/tcpecho_raw/tcpecho_raw.h"
 }
 #include <iostream>
 #include <map>
@@ -25,42 +24,23 @@ extern "C" {
 #include "lwip/dhcp.h"
 #include "lwip/autoip.h"
 #include "lwip/priv/tcpip_priv.h"
-
+#include <asio.hpp>
+#include "async_simple/coro/Lazy.h"
 /* lwIP netif includes */
 #include "lwip/etharp.h"
 #include "netif/ethernet.h"
 #include "lwip/ethip6.h"
-
+#include "tcpecho_raw.h"
 #include "crc64.h"
+#include "socks_client.hpp"
+#include "iocontext.h"
+#include "common.h"
 
 
 HANDLE windiver_handle = NULL;
-netif net_if;
 
 
-struct ConnectCtx
-{
-    typedef std::shared_ptr<ConnectCtx> Ptr;
-    netif net_if;
-    UINT32 IfIdx;                       /* Packet's interface index. */
-    UINT32 SubIfIdx;                    /* Packet's sub-interface index. */
 
-};
-struct InitTcpArg {
-    struct netif* net_if;
-    uint32_t ip[4];
-    uint16_t port;
-    bool is_ipv4;
-    void* msg;
-    InitTcpArg()
-    {
-        net_if = nullptr;
-        memset(ip, 0, 16);
-        port = 0;
-        is_ipv4 = true;
-        msg = nullptr;
-    }
-};
 static void
 status_callback(struct netif* state_netif)
 {
@@ -86,7 +66,8 @@ link_callback(struct netif* state_netif)
         printf("link_callback==DOWN\n");
     }
 }
-err_t netif_ip_output(struct netif* netif, struct pbuf* p, const ip4_addr_t* ipaddr);
+err_t netif_ip_outputv4(struct netif* netif, struct pbuf* p, const ip4_addr_t* ipaddr);
+err_t netif_ip_outputv6(struct netif* netif, struct pbuf* p, const ip6_addr_t* ipaddr);
 void netifInit(struct netif* net_if, VOID* dest_ip, uint16_t port, bool is_ipv4);
 
 void netifIp4Init(struct netif* net_if, UINT32 ip)
@@ -99,7 +80,7 @@ void netifIp4Init(struct netif* net_if, UINT32 ip)
     net_if->name[1] = 'w';
     net_if->linkoutput = NULL;
 #if LWIP_IPV4
-    net_if->output = netif_ip_output;
+    net_if->output = netif_ip_outputv4;
 #endif /* LWIP_IPV4 */
 #if LWIP_IPV6
     net_if->output_ip6 = ethip6_output;
@@ -122,14 +103,22 @@ ConnectCtx* getConnectCtx(PWINDIVERT_ADDRESS paddr)
         uint64_t crc = crc64((const char*)(addr.Network.LocalAddr), len);
         
         ConnectCtx* ctx = map_connect[crc];
-        ctx->IfIdx = addr.Network.IfIdx;
-        ctx->SubIfIdx = addr.Network.SubIfIdx;
+        if (ctx) {
+            ctx->IfIdx = addr.Network.IfIdx;
+            ctx->SubIfIdx = addr.Network.SubIfIdx;
+        }
         return ctx;
     } else if (addr.Event == WINDIVERT_EVENT_SOCKET_CONNECT) {
-        addr.Socket.LocalAddr[0] = htonl(addr.Socket.LocalAddr[0]);
-        addr.Socket.LocalAddr[1] = 0;
-        addr.Socket.RemoteAddr[0] = htonl(addr.Socket.RemoteAddr[0]);
-        addr.Socket.RemoteAddr[1] = 0;
+        if (addr.IPv6) {
+            WinDivertHelperHtonIpv6Address(addr.Socket.LocalAddr, addr.Socket.LocalAddr);
+            WinDivertHelperHtonIpv6Address(addr.Socket.RemoteAddr, addr.Socket.RemoteAddr);
+        } else {
+            addr.Socket.LocalAddr[0] = htonl(addr.Socket.LocalAddr[0]);
+            addr.Socket.LocalAddr[1] = 0;
+            addr.Socket.RemoteAddr[0] = htonl(addr.Socket.RemoteAddr[0]);
+            addr.Socket.RemoteAddr[1] = 0;
+        }
+        
         addr.Socket.LocalPort = htons(addr.Socket.LocalPort);
         addr.Socket.RemotePort = htons(addr.Socket.RemotePort);
         uint32_t len = offsetof(WINDIVERT_DATA_SOCKET, Protocol) - offsetof(WINDIVERT_DATA_SOCKET, LocalAddr) + 1;
@@ -149,7 +138,7 @@ ConnectCtx* getConnectCtx(PWINDIVERT_ADDRESS paddr)
     }
 
 }
-err_t netif_ip_output(struct netif* netif, struct pbuf* p, const ip4_addr_t* ipaddr)
+err_t netif_ip_outputv4(struct netif* netif, struct pbuf* p, const ip4_addr_t* ipaddr)
 {
     ConnectCtx* ctx = (ConnectCtx*)netif->state;
     WINDIVERT_ADDRESS addr;
@@ -161,17 +150,7 @@ err_t netif_ip_output(struct netif* netif, struct pbuf* p, const ip4_addr_t* ipa
     addr.IPChecksum = 1;
     addr.Impostor = 1;
     
-    WINDIVERT_TCPHDR* tcp_hdr;
-    WinDivertHelperParsePacket(p->payload, p->len, 0, 0, 0, 0, 0, &tcp_hdr, 0, 0, 0, 0, 0);
-    if (tcp_hdr) {
-        std::cout << "tcp in----------------" << std::endl;
-        if (tcp_hdr->Syn == 1) std::cout << "Syn" << std::endl;
-        if (tcp_hdr->Rst == 1) std::cout << "Rst" << std::endl;
-        if (tcp_hdr->Psh == 1) std::cout << "Psh" << std::endl;
-        if (tcp_hdr->Ack == 1) std::cout << "Ack" << std::endl;
-        if (tcp_hdr->Fin == 1) std::cout << "Fin" << std::endl;
-        std::cout << "tcp in++++++++++++++++" << std::endl;
-    }
+
     
     if (p->len < 64) {
         uint8_t d[64] = { 0 };
@@ -182,6 +161,10 @@ err_t netif_ip_output(struct netif* netif, struct pbuf* p, const ip4_addr_t* ipa
     }
     return ERR_OK;
 }
+err_t netif_ip_outputv6(struct netif* netif, struct pbuf* p, const ip6_addr_t* ipaddr)
+{
+    return netif_ip_outputv4(netif, p, nullptr);
+}
 
 err_t
 pcapif_init(struct netif* netif)
@@ -190,10 +173,10 @@ pcapif_init(struct netif* netif)
     netif->name[1] = 'w';
     netif->linkoutput = NULL;
 #if LWIP_IPV4
-    netif->output = netif_ip_output;
+    netif->output = netif_ip_outputv4;
 #endif /* LWIP_IPV4 */
 #if LWIP_IPV6
-    netif->output_ip6 = ethip6_output;
+    netif->output_ip6 = netif_ip_outputv6;
 #endif /* LWIP_IPV6 */
     netif->mtu = 1500;
     netif->flags |= NETIF_FLAG_ETHERNET;
@@ -245,16 +228,21 @@ void netifInit(struct netif* net_if,VOID* dest_ip,uint16_t port,bool is_ipv4)
     } else {
         WinDivertHelperHtonIpv6Address(ip, ip);
 
-        ip6_addr_t ipaddr, netmask, gw;
-        memcpy(ipaddr.addr, ip, 16);
+        //ip6_addr_t ipaddr, netmask, gw;
+        //memcpy(ipaddr.addr, ip, 16);
         net_if->ip6_addr[0].type = IPADDR_TYPE_V6;
         memcpy(net_if->ip6_addr[0].u_addr.ip6.addr, ip, 16);
-        netif_create_ip6_linklocal_address(net_if, 1);
-        netif_ip6_addr_set_state(net_if, 0, IP6_ADDR_VALID);
+        //netif_create_ip6_linklocal_address(net_if, 1);
+        //netif_ip6_addr_set_state(net_if, 0, IP6_ADDR_VALID);
+        net_if->ip6_addr_state[0] = IP6_ADDR_VALID;
         //netif_set_status_callback(net_if, status_callback);
         //netif_set_link_callback(net_if, link_callback);
-        netif_set_link_up(net_if);
-        netif_set_up(net_if);
+        pcapif_init(net_if);
+        net_if->flags |= NETIF_FLAG_LINK_UP;
+        net_if->flags |= NETIF_FLAG_UP;
+        //netif_set_up(net_if);
+        net_if->mtu = 1500;
+        net_if->mtu6 = 1500;
 
         InitTcpArg* tcp_arg = new InitTcpArg;
         struct tcpip_callback_msg* cb_msg = tcpip_callbackmsg_new(addTcp, tcp_arg);
@@ -277,25 +265,7 @@ void lwipInit()
 
 }
 
-uint32_t copy2Pbuf(pbuf* p, void* data, uint32_t len)
-{
-    uint8_t* d = (uint8_t*)data;
-    struct pbuf* q;
-    if (len <= p->len) {
-        memcpy(p->payload, data, len);
-        return len;
-    }
-    int32_t remaining_len = len;
-    for (q = p; q != NULL && remaining_len > 0; q = q->next) {
-        int32_t copy_len = std::min<int32_t>(q->len, remaining_len);
-        memcpy(q->payload, d, copy_len);
-        d += copy_len;
-        q->len = copy_len;
-        q->tot_len = remaining_len;
-        remaining_len -= copy_len;
-    }
-    return len - remaining_len;
-}
+
 
 static BOOL ctrlHandler(DWORD CtrlType)
 {
@@ -339,7 +309,6 @@ int main(int argc, char* argv[])
             std::cerr<<"failed to read packet "<< GetLastError() << std::endl;
             continue;
         }
-        std::cout << "RRRRRRRRRRRRRR" << windivert_addr.Layer <<std::endl;
         if (windivert_addr.Layer == WINDIVERT_LAYER_NETWORK) {
             //tcp:6 udp:17 icmp:1
             if (windivert_addr.Network.Protocol == WINDIVERT_IP_PROTOCOL_UDP) {
@@ -350,17 +319,7 @@ int main(int argc, char* argv[])
                 std::cerr << "ctx is null" << std::endl;
                 continue;
             }
-            WINDIVERT_TCPHDR* tcp_hdr;
-            WinDivertHelperParsePacket(data, recv_size, 0, 0, 0, 0, 0, &tcp_hdr, 0, 0, 0, 0, 0);
-            if (tcp_hdr) {
-                std::cout << "tcp out----------------" << std::endl;
-                if (tcp_hdr->Syn == 1) std::cout << "Syn" << std::endl;
-                if (tcp_hdr->Rst == 1) std::cout << "Rst" << std::endl;
-                if (tcp_hdr->Psh == 1) std::cout << "Psh" << std::endl;
-                if (tcp_hdr->Ack == 1) std::cout << "Ack" << std::endl;
-                if (tcp_hdr->Fin == 1) std::cout << "Fin" << std::endl;
-                std::cout << "tcp out++++++++++++++++" << std::endl;
-            }
+
 
             WinDivertHelperCalcChecksums(data, recv_size, &windivert_addr, 0);
             //std::cout << "rec" << std::endl;

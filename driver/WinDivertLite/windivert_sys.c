@@ -4010,7 +4010,7 @@ static void windivert_socket_classify(context_t context,
 
     
     if (event == WINDIVERT_EVENT_SOCKET_CONNECT) {
-        WCHAR* d = wcsstr(socket_data->ProcessName, L"sokit");
+        WCHAR* d = wcsstr(socket_data->ProcessName, L"msedge");
         if (d != NULL) {
             WINDIVERT_DATA_SOCKET* s = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(WINDIVERT_DATA_SOCKET), "rbtree");
             RtlCopyMemory(s, socket_data, sizeof(WINDIVERT_DATA_SOCKET));
