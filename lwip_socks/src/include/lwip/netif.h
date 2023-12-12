@@ -49,6 +49,12 @@
 #include "lwip/pbuf.h"
 #include "lwip/stats.h"
 
+ /*
+	 driver2socks
+ */
+
+#include<functional>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -300,7 +306,7 @@ struct netif {
    *  to send a packet on the interface. This function typically
    *  first resolves the hardware address, then sends the packet.
    *  For ethernet physical layer, this is usually etharp_output() */
-  netif_output_fn output;
+  std::function<std::remove_pointer<netif_output_fn>::type> output;
 #endif /* LWIP_IPV4 */
   /** This function is called by ethernet_output() when it wants
    *  to send a packet on the interface. This function outputs

@@ -1551,10 +1551,9 @@ void
 netif_create_ip6_linklocal_address(struct netif *netif, u8_t from_mac_48bit)
 {
   u8_t i, addr_index;
-  //fuckyou
-  //LWIP_ASSERT_CORE_LOCKED();
-  //fuckyou
-  //LWIP_ASSERT("netif_create_ip6_linklocal_address: invalid netif", netif != NULL);
+  LWIP_ASSERT_CORE_LOCKED();
+
+  LWIP_ASSERT("netif_create_ip6_linklocal_address: invalid netif", netif != NULL);
 
   /* Link-local prefix. */
   ip_2_ip6(&netif->ip6_addr[0])->addr[0] = PP_HTONL(0xfe800000ul);

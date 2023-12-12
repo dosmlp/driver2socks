@@ -62,6 +62,7 @@
 #include "lwip/stats.h"
 #include "lwip/snmp.h"
 #include "lwip/dhcp.h"
+#include "lwip/sys.h"
 
 #include <string.h>
 
@@ -72,6 +73,23 @@
 #define UDP_LOCAL_PORT_RANGE_END    0xffff
 #define UDP_ENSURE_LOCAL_PORT_RANGE(port) ((u16_t)(((port) & (u16_t)~UDP_LOCAL_PORT_RANGE_START) + UDP_LOCAL_PORT_RANGE_START))
 #endif
+
+/*
+  10. driver2socks: We need a global function to be called when new udp connection is created.
+*/
+static std::function<std::remove_pointer_t<udp_crt_fn>> udp_create_fn = NULL;
+
+void udp_create(std::function<std::remove_pointer_t<udp_crt_fn>> create_fn) {
+	udp_create_fn = create_fn;
+}
+
+void udp_timeout(struct udp_pcb* pcb, std::function<std::remove_pointer_t<udp_timeout_fn>> timeout_fn) {
+	pcb->timeout = timeout_fn;
+}
+
+void udp_set_timeout(struct udp_pcb* pcb, u32_t timeout) {
+	pcb->max_timeout = timeout;
+}
 
 /* last local UDP port */
 static u16_t udp_port = UDP_LOCAL_PORT_RANGE_START;
@@ -197,6 +215,7 @@ udp_input(struct pbuf *p, struct netif *inp)
   struct udp_pcb *pcb, *prev;
   struct udp_pcb *uncon_pcb;
   u16_t src, dest;
+  u32_t now;
   u8_t broadcast;
   u8_t for_us = 0;
 
@@ -308,6 +327,46 @@ udp_input(struct pbuf *p, struct netif *inp)
   /* no fully matching pcb found? then look for an unconnected pcb */
   if (pcb == NULL) {
     pcb = uncon_pcb;
+  }
+
+  /*
+	11. driver2socks: ocb is checked here.
+	1. if the pcb is null, it means that a new connection should be created.
+	2. if the pcb is not null but it reaches the timeout, the pcb should be removed.
+	3. if the pcb is not null and it doesn't reach the timeout, we let it go.
+  */
+  now = sys_now();
+  if (pcb != NULL) {
+	  // oops, timeout!
+	  if ((s32_t)(now - (pcb->last_active + pcb->max_timeout)) > 0) {
+		  if (pcb->timeout != NULL)
+			  pcb->timeout(pcb);
+		  udp_remove(pcb);
+		  pcb = NULL; // just like we didn't find any matched pcb.
+	  }
+	  else {
+		  pcb->last_active = now;
+	  }
+  }
+
+  if (pcb == NULL && udp_create_fn != NULL) {
+      pcb = udp_new();
+      pcb->last_active = now;
+      pcb->local_port = dest;
+      ip_addr_copy(pcb->local_ip, ip_data.current_iphdr_dest);
+      //pcb->local_ip.addr = ip4_current_dest_addr()->addr;
+      // udp_connect
+      pcb->remote_port = src;
+      ip_addr_copy(pcb->remote_ip, ip_data.current_iphdr_src);
+      //pcb->remote_ip.addr = ip4_current_src_addr()->addr;
+      pcb->flags |= UDP_FLAGS_CONNECTED;
+      // udp_bind
+      pcb->next = udp_pcbs;
+      udp_pcbs = pcb;
+      // update last_active_time
+      pcb->last_active = now;
+      // maybe handle ERR_ABRT here?
+      udp_create_fn(pcb);
   }
 
   /* Check checksum if this is a match or if it was directed at us. */
@@ -543,47 +602,49 @@ udp_sendto_chksum(struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *dst_ip,
 
   LWIP_DEBUGF(UDP_DEBUG | LWIP_DBG_TRACE, ("udp_send\n"));
 
-  if (pcb->netif_idx != NETIF_NO_INDEX) {
-    netif = netif_get_by_index(pcb->netif_idx);
-  } else {
-#if LWIP_MULTICAST_TX_OPTIONS
-    netif = NULL;
-    if (ip_addr_ismulticast(dst_ip)) {
+//driver2socks
+//  if (pcb->netif_idx != NETIF_NO_INDEX) {
+//    netif = netif_get_by_index(pcb->netif_idx);
+      netif = netif_list;
+//  } else {
+//#if LWIP_MULTICAST_TX_OPTIONS
+//    netif = NULL;
+//    if (ip_addr_ismulticast(dst_ip)) {
       /* For IPv6, the interface to use for packets with a multicast destination
        * is specified using an interface index. The same approach may be used for
        * IPv4 as well, in which case it overrides the IPv4 multicast override
        * address below. Here we have to look up the netif by going through the
        * list, but by doing so we skip a route lookup. If the interface index has
        * gone stale, we fall through and do the regular route lookup after all. */
-      if (pcb->mcast_ifindex != NETIF_NO_INDEX) {
-        netif = netif_get_by_index(pcb->mcast_ifindex);
-      }
-#if LWIP_IPV4
-      else
-#if LWIP_IPV6
-        if (IP_IS_V4(dst_ip))
-#endif /* LWIP_IPV6 */
-        {
+//      if (pcb->mcast_ifindex != NETIF_NO_INDEX) {
+//        netif = netif_get_by_index(pcb->mcast_ifindex);
+//      }
+//#if LWIP_IPV4
+//      else
+//#if LWIP_IPV6
+//        if (IP_IS_V4(dst_ip))
+//#endif /* LWIP_IPV6 */
+//        {
           /* IPv4 does not use source-based routing by default, so we use an
              administratively selected interface for multicast by default.
              However, this can be overridden by setting an interface address
              in pcb->mcast_ip4 that is used for routing. If this routing lookup
              fails, we try regular routing as though no override was set. */
-          if (!ip4_addr_isany_val(pcb->mcast_ip4) &&
-              !ip4_addr_eq(&pcb->mcast_ip4, IP4_ADDR_BROADCAST)) {
-            netif = ip4_route_src(ip_2_ip4(&pcb->local_ip), &pcb->mcast_ip4);
-          }
-        }
-#endif /* LWIP_IPV4 */
-    }
+//          if (!ip4_addr_isany_val(pcb->mcast_ip4) &&
+//              !ip4_addr_eq(&pcb->mcast_ip4, IP4_ADDR_BROADCAST)) {
+//            netif = ip4_route_src(ip_2_ip4(&pcb->local_ip), &pcb->mcast_ip4);
+//          }
+//        }
+//#endif /* LWIP_IPV4 */
+//    }
 
-    if (netif == NULL)
-#endif /* LWIP_MULTICAST_TX_OPTIONS */
-    {
+//    if (netif == NULL)
+//#endif /* LWIP_MULTICAST_TX_OPTIONS */
+////    {
       /* find the outgoing network interface for this packet */
-      netif = ip_route(&pcb->local_ip, dst_ip);
-    }
-  }
+//      netif = ip_route(&pcb->local_ip, dst_ip);
+//    }
+//  }
 
   /* no outgoing network interface could be found? */
   if (netif == NULL) {
@@ -678,10 +739,11 @@ udp_sendto_if_chksum(struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *dst_i
     } else {
       /* check if UDP PCB local IP address is correct
        * this could be an old address if netif->ip_addr has changed */
-      if (!ip4_addr_eq(ip_2_ip4(&(pcb->local_ip)), netif_ip4_addr(netif))) {
+       //driver2socks 不检查udp本地IP和网卡是否匹配
+      //if (!ip4_addr_eq(ip_2_ip4(&(pcb->local_ip)), netif_ip4_addr(netif))) {
         /* local_ip doesn't match, drop the packet */
-        return ERR_RTE;
-      }
+       // return ERR_RTE;
+      //}
       /* use UDP PCB local IP address as source address */
       src_ip = &pcb->local_ip;
     }
@@ -1159,7 +1221,7 @@ udp_disconnect(struct udp_pcb *pcb)
  * @param recv_arg additional argument to pass to the callback function
  */
 void
-udp_recv(struct udp_pcb *pcb, udp_recv_fn recv, void *recv_arg)
+udp_recv(struct udp_pcb *pcb, std::function<std::remove_pointer_t<udp_recv_fn>> recv, void *recv_arg)
 {
   LWIP_ASSERT_CORE_LOCKED();
 
@@ -1238,7 +1300,11 @@ udp_new(void)
 #if LWIP_MULTICAST_TX_OPTIONS
     udp_set_multicast_ttl(pcb, UDP_TTL);
 #endif /* LWIP_MULTICAST_TX_OPTIONS */
-    pcb_tci_init(pcb);
+	//diver2socks 初始化
+    //pcb_tci_init(pcb);
+	pcb->timeout = NULL;
+	pcb->recv = NULL;
+	pcb->create = NULL;
   }
   return pcb;
 }

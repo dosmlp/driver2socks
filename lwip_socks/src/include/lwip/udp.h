@@ -49,6 +49,7 @@
 #include "lwip/ip6_addr.h"
 #include "lwip/prot/udp.h"
 
+#include<functional>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -74,8 +75,12 @@ struct udp_pcb;
  * @param addr the remote IP address from which the packet was received
  * @param port the remote port from which the packet was received
  */
-typedef void (*udp_recv_fn)(void *arg, struct udp_pcb *pcb, struct pbuf *p,
-    const ip_addr_t *addr, u16_t port);
+typedef void (*udp_recv_fn)(void* arg, struct udp_pcb* pcb, struct pbuf* p,
+    const ip_addr_t* addr, u16_t port);
+
+typedef void (*udp_timeout_fn)(struct udp_pcb* pcb);
+
+typedef udp_timeout_fn udp_crt_fn;
 
 /** the UDP protocol control block */
 struct udp_pcb {
@@ -86,6 +91,14 @@ struct udp_pcb {
 
   struct udp_pcb *next;
 
+
+  /*
+	8. driver2socks: 每个 udp_pcb都像NAT一样有生存时间.
+  */
+  u32_t last_active;
+  u32_t max_timeout;
+  std::function<std::remove_pointer_t<udp_timeout_fn>> timeout;
+  std::function<std::remove_pointer_t<udp_crt_fn>> create;
   u8_t flags;
   /** ports are in host byte order */
   u16_t local_port, remote_port;
@@ -107,12 +120,22 @@ struct udp_pcb {
 #endif /* LWIP_UDPLITE */
 
   /** receive callback function */
-  udp_recv_fn recv;
+  /*
+	7. driver2socks
+  */
+  std::function<std::remove_pointer_t<udp_recv_fn>> recv;
   /** user-supplied argument for the recv callback */
   void *recv_arg;
 };
 /* udp_pcbs export for external reference (e.g. SNMP agent) */
 extern struct udp_pcb *udp_pcbs;
+
+/*
+  9. driver2socks: 以下函数用来管理udp_pcb的生命周期
+*/
+void		     udp_set_timeout(struct udp_pcb* pcb, u32_t timeout);
+void	         udp_timeout(struct udp_pcb* pcb, std::function<std::remove_pointer_t<udp_timeout_fn>> timeout_fn);
+void	         udp_create(std::function<std::remove_pointer_t<udp_crt_fn>> create_fn);
 
 /* The following functions is the application layer interface to the
    UDP code. */
@@ -125,7 +148,7 @@ void             udp_bind_netif (struct udp_pcb *pcb, const struct netif* netif)
 err_t            udp_connect    (struct udp_pcb *pcb, const ip_addr_t *ipaddr,
                                  u16_t port);
 void             udp_disconnect (struct udp_pcb *pcb);
-void             udp_recv       (struct udp_pcb *pcb, udp_recv_fn recv,
+void             udp_recv       (struct udp_pcb *pcb, std::function<std::remove_pointer_t<udp_recv_fn>> recv,
                                  void *recv_arg);
 err_t            udp_sendto_if  (struct udp_pcb *pcb, struct pbuf *p,
                                  const ip_addr_t *dst_ip, u16_t dst_port,

@@ -39,7 +39,7 @@
 #define LWIP_IPV4                  1
 #define LWIP_IPV6                  1
 #define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS
-#define NO_SYS                     0
+#define NO_SYS                     1
 #define LWIP_SOCKET                (NO_SYS==0)
 #define LWIP_NETCONN               (NO_SYS==0)
 #define LWIP_NETIF_API             (NO_SYS==0)
@@ -53,7 +53,8 @@
 #define LWIP_SNMP_V3               (LWIP_SNMP)
 #endif
 
-#define LWIP_DNS                   LWIP_UDP
+//#define LWIP_DNS                   LWIP_UDP
+#define LWIP_DNS 0
 #define LWIP_MDNS_RESPONDER        LWIP_UDP
 
 #define LWIP_NUM_NETIF_CLIENT_DATA (LWIP_MDNS_RESPONDER)
@@ -304,7 +305,7 @@ a lot of data that needs to be copied, this should be set high. */
 
 /* ---------- PPP options ---------- */
 
-#define PPP_SUPPORT             1      /* Set > 0 for PPP */
+#define PPP_SUPPORT             0      /* Set > 0 for PPP */
 
 #if PPP_SUPPORT
 
@@ -315,8 +316,8 @@ a lot of data that needs to be copied, this should be set high. */
  * we're limited by the command line length so you need to modify the settings
  * in this file.
  */
-#define PPPOE_SUPPORT           1
-#define PPPOS_SUPPORT           1
+#define PPPOE_SUPPORT           0
+#define PPPOS_SUPPORT           0
 
 #define PAP_SUPPORT             1      /* Set > 0 for PAP. */
 #define CHAP_SUPPORT            1      /* Set > 0 for CHAP. */

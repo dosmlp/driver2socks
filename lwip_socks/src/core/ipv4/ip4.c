@@ -550,55 +550,56 @@ ip4_input(struct pbuf *p, struct netif *inp)
   ip_addr_copy_from_ip4(ip_data.current_iphdr_src, iphdr->src);
 
   /* match packet against an interface, i.e. is this packet for us? */
-  if (ip4_addr_ismulticast(ip4_current_dest_addr())) {
-#if LWIP_IGMP
-    if ((inp->flags & NETIF_FLAG_IGMP) && (igmp_lookfor_group(inp, ip4_current_dest_addr()))) {
+//  if (ip4_addr_ismulticast(ip4_current_dest_addr())) {
+//#if LWIP_IGMP
+//    if ((inp->flags & NETIF_FLAG_IGMP) && (igmp_lookfor_group(inp, ip4_current_dest_addr()))) {
       /* IGMP snooping switches need 0.0.0.0 to be allowed as source address (RFC 4541) */
-      ip4_addr_t allsystems;
-      IP4_ADDR(&allsystems, 224, 0, 0, 1);
-      if (ip4_addr_eq(ip4_current_dest_addr(), &allsystems) &&
-          ip4_addr_isany(ip4_current_src_addr())) {
-        check_ip_src = 0;
-      }
-      netif = inp;
-    } else {
-      netif = NULL;
-    }
-#else /* LWIP_IGMP */
-    if ((netif_is_up(inp)) && (!ip4_addr_isany_val(*netif_ip4_addr(inp)))) {
-      netif = inp;
-    } else {
-      netif = NULL;
-    }
-#endif /* LWIP_IGMP */
-  } else {
+//      ip4_addr_t allsystems;
+//      IP4_ADDR(&allsystems, 224, 0, 0, 1);
+//      if (ip4_addr_eq(ip4_current_dest_addr(), &allsystems) &&
+//          ip4_addr_isany(ip4_current_src_addr())) {
+//        check_ip_src = 0;
+//      }
+//      netif = inp;
+//          } else {
+//      netif = NULL;
+//          }
+//#else /* LWIP_IGMP */
+//    if ((netif_is_up(inp)) && (!ip4_addr_isany_val(*netif_ip4_addr(inp)))) {
+//      netif = inp;
+//          } else {
+//      netif = NULL;
+//    }
+//#endif /* LWIP_IGMP */
+//  } else {
     /* start trying with inp. if that's not acceptable, start walking the
        list of configured netifs. */
-    if (ip4_input_accept(inp)) {
+//           if (ip4_input_accept(inp)) {
+  //driver2socks
       netif = inp;
-    } else {
-      netif = NULL;
-#if !LWIP_NETIF_LOOPBACK || LWIP_HAVE_LOOPIF
+//    } else {
+//      netif = NULL;
+//#if !LWIP_NETIF_LOOPBACK || LWIP_HAVE_LOOPIF
       /* Packets sent to the loopback address must not be accepted on an
        * interface that does not have the loopback address assigned to it,
        * unless a non-loopback interface is used for loopback traffic. */
-      if (!ip4_addr_isloopback(ip4_current_dest_addr()))
-#endif /* !LWIP_NETIF_LOOPBACK || LWIP_HAVE_LOOPIF */
-      {
-#if !LWIP_SINGLE_NETIF
-        NETIF_FOREACH(netif) {
-          if (netif == inp) {
+       //      if (!ip4_addr_isloopback(ip4_current_dest_addr()))
+//#endif /* !LWIP_NETIF_LOOPBACK || LWIP_HAVE_LOOPIF */
+//      {
+//#if !LWIP_SINGLE_NETIF
+//        NETIF_FOREACH(netif) {
+//          if (netif == inp) {
             /* we checked that before already */
-            continue;
-          }
-          if (ip4_input_accept(netif)) {
-            break;
-          }
-        }
-#endif /* !LWIP_SINGLE_NETIF */
-      }
-    }
-  }
+//            continue;
+//          }
+//          if (ip4_input_accept(netif)) {
+//            break;
+//          }
+//        }
+//#endif /* !LWIP_SINGLE_NETIF */
+//      }
+//    }
+//  }
 
 #if IP_ACCEPT_LINK_LAYER_ADDRESSING
   /* Pass DHCP messages regardless of destination address. DHCP traffic is addressed
@@ -1062,17 +1063,17 @@ err_t
 ip4_output(struct pbuf *p, const ip4_addr_t *src, const ip4_addr_t *dest,
            u8_t ttl, u8_t tos, u8_t proto)
 {
-  struct netif *netif;
+  struct netif *netif = netif_list;
 
   LWIP_IP_CHECK_PBUF_REF_COUNT_FOR_TX(p);
-
+  /*
   if ((netif = ip4_route_src(src, dest)) == NULL) {
     LWIP_DEBUGF(IP_DEBUG, ("ip4_output: No route to %"U16_F".%"U16_F".%"U16_F".%"U16_F"\n",
                            ip4_addr1_16(dest), ip4_addr2_16(dest), ip4_addr3_16(dest), ip4_addr4_16(dest)));
     IP_STATS_INC(ip.rterr);
     return ERR_RTE;
   }
-
+  */
   return ip4_output_if(p, src, dest, ttl, tos, proto, netif);
 }
 

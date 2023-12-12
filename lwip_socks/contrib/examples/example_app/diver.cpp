@@ -282,7 +282,7 @@ static BOOL ctrlHandler(DWORD CtrlType)
     }
     return FALSE;
 }
-int main(int argc, char* argv[])
+int main3(int argc, char* argv[])
 {
     if (!SetConsoleCtrlHandler(ctrlHandler, TRUE)) {
         std::cerr << "Failed to set console handler" << std::endl;

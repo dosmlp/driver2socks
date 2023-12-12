@@ -111,6 +111,7 @@
 #include "lwip/ip6.h"
 #include "lwip/ip6_addr.h"
 #include "lwip/nd6.h"
+#include "arch/sys_arch.h"
 
 #include <string.h>
 
@@ -209,23 +210,28 @@ tcp_init(void)
 void
 tcp_free(struct tcp_pcb *pcb)
 {
-    printf("tcp_free:%p\n", pcb);
+    if (sys_arch_pcb_unwatch(pcb)) {
   LWIP_ASSERT("tcp_free: LISTEN", pcb->state != LISTEN);
 #if LWIP_TCP_PCB_NUM_EXT_ARGS
   tcp_ext_arg_invoke_callbacks_destroyed(pcb->ext_args);
 #endif
+        pcb->recv = NULL;
+        pcb->errf = NULL;
   memp_free(MEMP_TCP_PCB, pcb);
+}
 }
 
 /** Free a tcp listen pcb */
 static void
 tcp_free_listen(struct tcp_pcb *pcb)
 {
+	if (sys_arch_pcb_unwatch(pcb)) {
   LWIP_ASSERT("tcp_free_listen: !LISTEN", pcb->state != LISTEN);
 #if LWIP_TCP_PCB_NUM_EXT_ARGS
   tcp_ext_arg_invoke_callbacks_destroyed(pcb->ext_args);
 #endif
   memp_free(MEMP_TCP_PCB_LISTEN, pcb);
+}
 }
 
 /**
@@ -484,6 +490,10 @@ tcp_close_shutdown_fin(struct tcp_pcb *pcb)
 err_t
 tcp_close(struct tcp_pcb *pcb)
 {
+	if (!sys_arch_pcb_is_watch(pcb)) {
+		return ERR_RST;
+	}
+
   LWIP_ASSERT_CORE_LOCKED();
 
   LWIP_ERROR("tcp_close: invalid pcb", pcb != NULL, return ERR_ARG);
@@ -515,6 +525,10 @@ tcp_close(struct tcp_pcb *pcb)
 err_t
 tcp_shutdown(struct tcp_pcb *pcb, int shut_rx, int shut_tx)
 {
+	if (!sys_arch_pcb_is_watch(pcb)) {
+		return ERR_RST;
+	}
+
   LWIP_ASSERT_CORE_LOCKED();
 
   LWIP_ERROR("tcp_shutdown: invalid pcb", pcb != NULL, return ERR_ARG);
@@ -565,7 +579,7 @@ tcp_abandon(struct tcp_pcb *pcb, int reset)
 {
   u32_t seqno, ackno;
 #if LWIP_CALLBACK_API
-  tcp_err_fn errf;
+    std::function<std::remove_pointer<tcp_err_fn>::type> errf;
 #endif /* LWIP_CALLBACK_API */
   void *errf_arg;
 
@@ -891,7 +905,7 @@ tcp_listen_with_backlog_and_err(struct tcp_pcb *pcb, u8_t backlog, err_t *err)
   lpcb->state = LISTEN;
   lpcb->prio = pcb->prio;
   lpcb->so_options = pcb->so_options;
-  lpcb->netif_idx = pcb->netif_idx;
+	lpcb->netif_idx = NETIF_NO_INDEX;
   lpcb->ttl = pcb->ttl;
   lpcb->tos = pcb->tos;
 #if LWIP_VLAN_PCP
@@ -910,6 +924,7 @@ tcp_listen_with_backlog_and_err(struct tcp_pcb *pcb, u8_t backlog, err_t *err)
 #endif
   tcp_free(pcb);
 #if LWIP_CALLBACK_API
+	new ((char*)&lpcb->accept) decltype(lpcb->accept)();
   lpcb->accept = tcp_accept_null;
 #endif /* LWIP_CALLBACK_API */
 #if TCP_LISTEN_BACKLOG
@@ -972,6 +987,10 @@ tcp_update_rcv_ann_wnd(struct tcp_pcb *pcb)
 void
 tcp_recved(struct tcp_pcb *pcb, u16_t len)
 {
+	if (!sys_arch_pcb_is_watch(pcb)) {
+		return;
+	}
+
   u32_t wnd_inflation;
   tcpwnd_size_t rcv_wnd;
 
@@ -1384,7 +1403,7 @@ tcp_slowtmr_start:
     if (pcb_remove) {
       struct tcp_pcb *pcb2;
 #if LWIP_CALLBACK_API
-      tcp_err_fn err_fn = pcb->errf;
+            std::function<std::remove_pointer<tcp_err_fn>::type> err_fn = pcb->errf;
 #endif /* LWIP_CALLBACK_API */
       void *err_arg;
       enum tcp_state last_state;
@@ -1932,7 +1951,9 @@ tcp_alloc(u8_t prio)
 #endif /* LWIP_TCP_KEEPALIVE */
     pcb_tci_init(pcb);
   }
-  printf("tcp alloc:%p\n", pcb);
+  if (NULL != pcb) {
+      sys_arch_pcb_watch(pcb);
+  }
   return pcb;
 }
 
@@ -2019,7 +2040,7 @@ tcp_arg(struct tcp_pcb *pcb, void *arg)
  * @param recv callback function to call for this pcb when data is received
  */
 void
-tcp_recv(struct tcp_pcb *pcb, tcp_recv_fn recv)
+tcp_recv(struct tcp_pcb *pcb, std::function<std::remove_pointer<tcp_recv_fn>::type> recv)
 {
   LWIP_ASSERT_CORE_LOCKED();
   if (pcb != NULL) {
@@ -2065,8 +2086,12 @@ tcp_sent(struct tcp_pcb *pcb, tcp_sent_fn sent)
  *        has occurred on the connection
  */
 void
-tcp_err(struct tcp_pcb *pcb, tcp_err_fn err)
+tcp_err(struct tcp_pcb *pcb, std::function<std::remove_pointer<tcp_err_fn>::type> err)
 {
+    if (!sys_arch_pcb_is_watch(pcb)) {
+        return;
+    }
+
   LWIP_ASSERT_CORE_LOCKED();
   if (pcb != NULL) {
     LWIP_ASSERT("invalid socket state for err callback", pcb->state != LISTEN);

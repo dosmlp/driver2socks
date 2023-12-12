@@ -77,6 +77,7 @@
 #if LWIP_TCP_TIMESTAMPS
 #include "lwip/sys.h"
 #endif
+#include "arch/sys_arch.h"
 
 #include <string.h>
 
@@ -392,6 +393,10 @@ tcp_write_checks(struct tcp_pcb *pcb, u16_t len)
 err_t
 tcp_write(struct tcp_pcb *pcb, const void *arg, u16_t len, u8_t apiflags)
 {
+	if (!sys_arch_pcb_is_watch(pcb)) {
+		return ERR_RST;
+	}
+
   struct pbuf *concat_p = NULL;
   struct tcp_seg *last_unsent = NULL, *seg = NULL, *prev_seg = NULL, *queue = NULL;
   u16_t pos = 0; /* position in 'arg' data */
@@ -1240,6 +1245,10 @@ tcp_build_wnd_scale_option(u32_t *opts)
 err_t
 tcp_output(struct tcp_pcb *pcb)
 {
+	if (!sys_arch_pcb_is_watch(pcb)) {
+		return ERR_RST;
+	}
+
   struct tcp_seg *seg, *useg;
   u32_t wnd, snd_nxt;
   err_t err;
@@ -1291,10 +1300,9 @@ tcp_output(struct tcp_pcb *pcb)
                  lwip_ntohl(seg->tcphdr->seqno), pcb->lastack));
   }
 
-  //fuckyou
+  //driver2socks
   //netif = tcp_route(pcb, &pcb->local_ip, &pcb->remote_ip);
-  netif = (struct netif*)pcb->callback_arg;
-  printf("tcp_output:%p", pcb);
+  netif = netif_list;
   if (netif == NULL) {
     return ERR_RTE;
   }
@@ -1931,10 +1939,9 @@ tcp_output_control_segment(const struct tcp_pcb *pcb, struct pbuf *p,
   struct netif *netif;
 
   LWIP_ASSERT("tcp_output_control_segment: invalid pbuf", p != NULL);
-  //fuckyou
-  //netif = tcp_route(pcb, src, dst);
-  netif = pcb->callback_arg;
-  printf("tcp_output_control_segment:%p", pcb);
+  //driver2socks
+  netif = tcp_route(pcb, src, dst);
+
   if (netif == NULL) {
     pbuf_free(p);
     return ERR_RTE;
