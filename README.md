@@ -1,1 +1,2 @@
 # driver2socks
+在驱动层拦截指定应用的流量转发到socks5服务器实现socks5代理的效果
