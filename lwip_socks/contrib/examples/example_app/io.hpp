@@ -18,7 +18,7 @@
 
 #include <string>
 
-namespace socks {
+namespace driver2socks {
 
 	template <class T> struct type {};
 

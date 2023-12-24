@@ -1,10 +1,13 @@
 ﻿#pragma once
+#include "socks_client.hpp"
+
 extern "C"{
 #include <lwip/tcp.h>
 #include <lwip/netif.h>
 #include <lwip/init.h>
 #include <lwip/udp.h>
 #include <lwip/sys.h>
+#include  <lwip/timeouts.h>
 }
 
 #include "asio.hpp"
@@ -18,7 +21,7 @@ extern "C"{
 #include "tun2socks.h"
 #include "arch/sys_arch.h"
 
-namespace tun2socks {
+namespace driver2socks {
 	class LWIPStack {
 	public:
 		inline static LWIPStack& getInstance() {
@@ -126,6 +129,15 @@ namespace tun2socks {
 		}
 
 		inline static err_t lwip_tcp_close(tcp_pcb* pcb) {
+			if (pcb->callback_arg) {
+				auto p = static_cast<std::shared_ptr<driver2socks::socks_client>*>(pcb->callback_arg);
+				pcb->callback_arg = nullptr;
+				(*p)->closeSocket();
+				delete p;
+			}
+
+
+			LWIPStack::lwip_tcp_receive(pcb, NULL);
             err_t err = tcp_shutdown(pcb, 1, 1) | tcp_close(pcb);
             return err;
 		}
@@ -135,18 +147,30 @@ namespace tun2socks {
 			_strand = new asio::io_context::strand(ctx);
             netif_default = netif_list;
 			_loopback = netif_list;
+
+			std::thread([this]() {
+				while (1) {
+					_strand->post([] {
+						sys_check_timeouts();
+						});
+					timeBeginPeriod(1);
+					Sleep(1);
+					timeEndPeriod(1);
+				}
+				}).detach();
 		}
 
 		inline void strand_tcp_write(struct tcp_pcb *pcb, std::shared_ptr<void> arg, u16_t len, u8_t apiflags, std::function<void(err_t)> cb) {
 			_strand->post([=]() {
 				auto err = LWIPStack::lwip_tcp_write(pcb, arg, len, apiflags);
+				tcp_output(pcb);
 				if (cb != NULL)
 					cb(err);
 			});
 		}
 
         inline void strand_post(std::function<void()> cb) {
-            _strand->post([cb]() {
+			_strand->post([cb]() {
                 if (cb != NULL)
                     cb();
             });
@@ -157,7 +181,17 @@ namespace tun2socks {
 				auto err = _loopback->input(p, _loopback);
 				if (cb != NULL)
 					cb(err);
-			});
+				});
+		}
+		inline void strand_ip_input(std::shared_ptr<void> bf,size_t size, std::function<void(err_t)> cb)
+		{
+			_strand->post([=]() {
+				pbuf* p = pbuf_alloc(PBUF_RAW, size, PBUF_POOL);
+				pbuf_take(p, bf.get(), size);
+				auto err = _loopback->input(p, _loopback);
+				if (cb != NULL)
+					cb(err);
+				});
 		}
 
 		inline void strand_tcp_close(tcp_pcb* pcb, std::function<void(err_t)> cb) {
@@ -209,7 +243,7 @@ namespace tun2socks {
         LWIPStack() : _strand(NULL), _loopback(NULL) {}
 
 	private:
-		asio::io_context::strand*	_strand;
-		netif*								_loopback;
+		asio::io_context::strand* _strand;
+		netif* _loopback;
 	};
 }

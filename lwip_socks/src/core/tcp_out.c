@@ -436,7 +436,6 @@ tcp_write(struct tcp_pcb *pcb, const void *arg, u16_t len, u8_t apiflags)
                                  (void *)pcb, arg, len, (u16_t)apiflags));
   LWIP_ERROR("tcp_write: arg == NULL (programmer violates API)",
              arg != NULL, return ERR_ARG;);
-
   err = tcp_write_checks(pcb, len);
   if (err != ERR_OK) {
     return err;

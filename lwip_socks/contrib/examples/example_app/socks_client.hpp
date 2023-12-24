@@ -5,13 +5,15 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 #include <memory>
+#include <lwip/tcp.h>
 
 #include "io.hpp"
 #include "async_simple/coro/Lazy.h"
 #include "asio_coro_util.hpp"
 #include "iocontext.h"
+#include "ring_buf.hpp"
 
-namespace socks {
+namespace driver2socks {
 
 	inline bool parse_udp_proxy_header(const void* buf, std::size_t len,
 		asio::ip::tcp::endpoint& src, asio::ip::tcp::endpoint& dst, uint16_t& payload_len)
@@ -70,7 +72,7 @@ namespace socks {
 
 	inline const asio::error_category& error_category()
 	{
-		return error_category_single<socks::error_category_impl>();
+		return error_category_single<driver2socks::error_category_impl>();
 	}
 
 	namespace errc {
@@ -114,7 +116,7 @@ namespace socks {
 
 		inline asio::error_code make_error_code(errc_t e)
 		{
-			return asio::error_code(static_cast<int>(e), socks::error_category());
+			return asio::error_code(static_cast<int>(e), driver2socks::error_category());
 		}
 	}
 
@@ -164,7 +166,7 @@ namespace socks {
 namespace std {
 
 	template <>
-	struct is_error_code_enum<socks::errc::errc_t>
+	struct is_error_code_enum<driver2socks::errc::errc_t>
 	{
 		static const bool value = true;
 	};
@@ -172,7 +174,7 @@ namespace std {
 } // namespace system
 
 
-namespace socks {
+namespace driver2socks {
 
 	//////////////////////////////////////////////////////////////////////////
 
@@ -181,7 +183,7 @@ namespace socks {
 
 	struct socks_address
 	{
-		std::string scheme;
+		typedef std::shared_ptr<socks_address> Ptr;
 		std::string host;
 		std::string port;
 		std::string path;
@@ -205,11 +207,10 @@ namespace socks {
 		bool udp_associate;
 	};
 
-	class socks_client
-		: public std::enable_shared_from_this<socks_client>
+	class socks_client : public std::enable_shared_from_this<socks_client>
 	{
 	public:
-		void* ctx = nullptr;
+		tcp_pcb* lwip_tcp_pcb_ = nullptr;
 		enum {
 			SOCKS_VERSION_4 = 4,
 			SOCKS_VERSION_5 = 5
@@ -254,85 +255,129 @@ namespace socks {
 
 	public:
 		explicit socks_client(asio::io_context& io):m_socket(io)
-		{}
-
-		async_simple::coro::Lazy<uint32_t> sendData(uint8_t* data, uint32_t len)
 		{
-			
-			asio::streambuf buf;
-			asio::mutable_buffer b = buf.prepare(len);
-			memcpy(asio::buffer_cast<uint8_t*>(b), data, len);
-			buf.commit(len);
-
-			auto [ec, wsize] = co_await async_write(m_socket, buf.data(), asio::transfer_exactly(len));
-			if (ec) {
-				co_return 0;
-			}
-			co_return wsize;
-			
+		}
+		~socks_client()
+		{
+			m_socket.close();
+			lwip_tcp_pcb_ = nullptr;
 		}
 
-		template <typename Handler>
-		async_simple::coro::Lazy<void> asyncRead(Handler handler)
+		bool sendData(uint8_t* data, uint32_t len)
 		{
-			uint8_t read_data[1024];
-			for (;;) {
-				if (!do_proxy_done) continue;
-				asio::streambuf buf;
-				auto [ec, rsize] = co_await async_read_some(m_socket, asio::buffer(read_data,1024));
-				asio::const_buffer b = buf.data();
-				
+			bool ret = buf_send_.Write(data, len);
+			startSend();
+			return ret;
+		}
+		void closeSocket()
+		{
+			m_socket.close();
+		}
+
+		void startSend()
+		{
+			if (!do_proxy_done) {
+				return;
+			}
+			bool expectation = false;
+			if (!is_writing_.compare_exchange_weak(expectation,true)) {
+				return;
+			}
+			int len = buf_send_.GetAvailable();
+			if (len > 1024) {
+				len = 1024;
+			}
+			if (len <= 0) {
+				is_writing_.store(false);
+				return;
+			}
+			std::shared_ptr<uint8_t> bf((uint8_t*)malloc(len), [](void* p) { if (p) free(p); });
+
+			buf_send_.Read(bf.get(), len);
+			auto self = shared_from_this();
+			asio::async_write(m_socket, asio::buffer(bf.get(),len), asio::transfer_exactly(len), [this,self, bf](asio::error_code ec, size_t size) {
+				is_writing_.store(false);
 				if (ec) {
-					std::cout << "asyncRead error:" << ec.message() << "\n";
-					m_socket.close();
-					handler(ec, nullptr, 0, ctx);
-					co_return;
+					std::cout << "asio::async_write error:" << ec.message() << "\n";
+					self->m_socket.close();
+					//handler(ec, std::shared_ptr<void>(nullptr), 0, self->lwip_tcp_pcb_);
 				} else {
-					handler(ec, read_data, rsize, ctx);
+					inject_total_ += size;
+					//std::cout << "socksclient total write size:" << inject_total_ << "\n";
+					if (buf_send_.GetAvailable() > 0) self->startSend();
 				}
-			}
+			});
+		}
+		template <typename Handler>
+		void startRecv(Handler read_callback)
+		{
+			std::shared_ptr<void> bf(malloc(2048), [](void* p) { if (p) free(p); });
+			auto self = shared_from_this();
+			m_socket.async_read_some(asio::buffer(bf.get(), 2048), [self,bf,read_callback,this](asio::error_code ec, size_t size) {
+				if (ec) {
+					std::cout << "socket async_read_some error:" << ec.message() << "\n";
+					self->m_socket.close();
+					read_callback(ec, std::shared_ptr<void>(nullptr), 0, self->lwip_tcp_pcb_);
+				} else {
+					recv_total_ += size;
+					//std::cout << "socksclient total read size:" << recv_total_ << "\n";
+					read_callback(ec, bf, size, self->lwip_tcp_pcb_);
+					self->startRecv(read_callback);
+				}
+			});
+		}
+
+		template <typename Handler, typename HandlerRead>
+		void start_socks( std::string host, uint16_t port, std::string proxy_address, uint16_t proxy_port,HandlerRead read, Handler handler)
+		{
+			socks_address::Ptr socks_addr = std::make_shared<socks_address>();
+			socks_addr->host = host;
+			socks_addr->port = std::to_string(port);
+			socks_addr->proxy_hostname = false;
+			socks_addr->udp_associate = false;
+			socks_addr->proxy_address = proxy_address;
+			socks_addr->proxy_port = std::to_string(proxy_port);
+
+			auto self = shared_from_this();
+			/*
+			m_socket.async_connect(asio::ip::tcp::endpoint(asio::ip::make_address_v4(proxy_address), proxy_port),[self,this,read](asio::error_code ec) {
+				if (ec) {
+					std::cout << "error connect to proxy\n";
+				} else {
+					do_proxy_done = true;
+					startRecv(read);
+					startSend();
+				}
+			});
+			*/
+			async_do_proxy(socks_addr,handler).start([read,this,self](async_simple::Try<void> Result) {
+					if (Result.hasError()) {
+						std::cout << "Error Happened in async_do_proxy.\n";
+					} else {
+						std::cout << "async_do_proxy completed successfully.\n";
+						do_proxy_done = true;
+						startRecv(read);
+						startSend();
+					}
+				});
+			
 		}
 
 		template <typename Handler>
-		async_simple::coro::Lazy<void> start_socks(
-			std::string host, std::string port,
-			std::string t_ip, std::string t_port, Handler handler)
+		async_simple::coro::Lazy<bool> async_do_proxy(socks_address::Ptr content,Handler handler)
 		{
-			std::cout << __FUNCTION__":" <<t_ip<< "\n";
-			auto ec = co_await async_connect(IoContext::getIoContext(), m_socket, host, port);
+			auto ec = co_await async_connect(IoContext::getIoContext(), m_socket, content->host, content->port);
+			//auto ec = co_await async_connect(IoContext::getIoContext(), m_socket, content->proxy_address, content->proxy_port);
 			if (ec) {
 				std::cout << "Connect error: " << ec.message() << '\n';
-				handler(socks::errc::socks_connect_proxy_fail);
+				handler(driver2socks::errc::socks_connect_proxy_fail);
 				co_return;
 			}
-
-			socks_address socks_addr;
-			socks_addr.host = host;
-			socks_addr.port = port;
-			socks_addr.scheme = "socks5";
-			socks_addr.proxy_hostname = false;
-			socks_addr.udp_associate = false;
-			socks_addr.proxy_address = t_ip;
-			socks_addr.proxy_port = t_port;
-
-			co_await async_do_proxy<Handler>(socks_addr, handler);
-		}
-
-		template <typename Handler>
-		async_simple::coro::Lazy<bool> async_do_proxy(socks_address& content, Handler handler)
-		{
 			m_socks_address = content;
-			m_address = content.proxy_address;
-			m_port = content.proxy_port;
+			m_address = content->proxy_address;
+			m_port = content->proxy_port;
 
-			if (content.scheme == "socks5")
-			{
-				co_await do_socks5<Handler>(handler);
-			}
-			else
-			{
-				co_return false;
-			}
+			co_await do_socks5<Handler>(handler);
 
 			co_return true;
 		}
@@ -349,14 +394,13 @@ namespace socks {
 		template <typename Handler>
 		async_simple::coro::Lazy<void> do_socks5(Handler handler)
 		{
-			
-			std::size_t bytes_to_write = m_socks_address.username.empty() ? 3 : 4;
+			std::size_t bytes_to_write = m_socks_address->username.empty() ? 3 : 4;
 			asio::streambuf request;
 			asio::mutable_buffer b = request.prepare(bytes_to_write);
 			char* p = asio::buffer_cast<char*>(b);
 
 			write_uint8(5, p); // SOCKS VERSION 5.
-			if (m_socks_address.username.empty())
+			if (m_socks_address->username.empty())
 			{
 				write_uint8(1, p); // 1 authentication method (no auth)
 				write_uint8(0, p); // no authentication
@@ -379,9 +423,7 @@ namespace socks {
 			}
 
 			asio::streambuf response;
-			std::cout << __FUNCTION__"222!!!" << "\n";
 			auto [ec, rsize] = co_await ::async_read(m_socket, response,asio::transfer_exactly(2));
-			std::cout << __FUNCTION__"333!!!" << "\n";
 			if (ec)
 			{
 				handler(ec);
@@ -401,7 +443,7 @@ namespace socks {
 				method = read_uint8(p);
 				if (version != 5)	// 版本不等于5, 不支持socks5.
 				{
-					ec = socks::errc::socks_unsupported_version;
+					ec = driver2socks::errc::socks_unsupported_version;
 					handler(ec);
 					co_return;
 				}
@@ -409,9 +451,9 @@ namespace socks {
 			//如果代理服务需要密码验证
 			if (method == 2)
 			{
-				if (m_socks_address.username.empty())
+				if (m_socks_address->username.empty())
 				{
-					ec = socks::errc::socks_username_required;
+					ec = driver2socks::errc::socks_username_required;
 					handler(ec);
 					co_return;
 				}
@@ -419,15 +461,15 @@ namespace socks {
 				// start sub-negotiation.
 				request.consume(request.size());
 
-				std::size_t bytes_to_write = m_socks_address.username.size() + m_socks_address.password.size() + 3;
+				std::size_t bytes_to_write = m_socks_address->username.size() + m_socks_address->password.size() + 3;
 				asio::mutable_buffer mb = request.prepare(bytes_to_write);
 				char* mp = asio::buffer_cast<char*>(mb);
 
 				write_uint8(1, mp);
-				write_uint8(static_cast<int8_t>(m_socks_address.username.size()), mp);
-				write_string(m_socks_address.username, mp);
-				write_uint8(static_cast<int8_t>(m_socks_address.password.size()), mp);
-				write_string(m_socks_address.password, mp);
+				write_uint8(static_cast<int8_t>(m_socks_address->username.size()), mp);
+				write_string(m_socks_address->username, mp);
+				write_uint8(static_cast<int8_t>(m_socks_address->password.size()), mp);
+				write_string(m_socks_address->password, mp);
 				request.commit(bytes_to_write);
 
 				int len = 0;
@@ -487,10 +529,10 @@ namespace socks {
 				// 发送socks5连接命令.
 				write_uint8(5, wp); // SOCKS VERSION 5.
 									// CONNECT/UDP command.
-				write_uint8(m_socks_address.udp_associate ? SOCKS5_CMD_UDP : SOCKS_CMD_CONNECT, wp);
+				write_uint8(m_socks_address->udp_associate ? SOCKS5_CMD_UDP : SOCKS_CMD_CONNECT, wp);
 				write_uint8(0, wp); // reserved.
 
-				if (m_socks_address.proxy_hostname)
+				if (m_socks_address->proxy_hostname)
 				{
 					write_uint8(3, wp); // atyp, domain name.
 					//BOOST_ASSERT(m_address.size() <= 255);
@@ -552,7 +594,7 @@ namespace socks {
 					m_remote_endp.address(asio::ip::address_v4(read_uint32(rp)));
 					m_remote_endp.port(read_uint16(rp));
 
-					if (m_socks_address.udp_associate)
+					if (m_socks_address->udp_associate)
 					{
 						// 更新远程地址, 后面用于udp传输.
 						m_remote_endp.address(m_socket.remote_endpoint(ec).address());
@@ -627,7 +669,7 @@ namespace socks {
 				}
 				
 				ec = asio::error_code();	// 没有发生错误, 返回.
-				do_proxy_done = true;
+				
 				handler(ec);
 				co_return;
 			}
@@ -638,12 +680,17 @@ namespace socks {
 		}
 
 	private:
-		bool do_proxy_done = false;
+		volatile bool do_proxy_done = false;
+		std::atomic_bool is_writing_ = false;
 		asio::ip::tcp::socket m_socket;
-		socks_address m_socks_address;
+		socks_address::Ptr m_socks_address;
 		std::string m_address;
 		std::string m_port;
 		asio::ip::tcp::endpoint m_remote_endp;
+		std::atomic_uint32_t recv_total_ = 0;
+		std::atomic_uint32_t inject_total_ = 0;
+
+		lockfree::spsc::RingBuf<uint8_t, 4096*10> buf_send_;
 	};
 }
 

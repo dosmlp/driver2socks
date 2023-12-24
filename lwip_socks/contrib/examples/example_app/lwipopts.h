@@ -40,13 +40,13 @@
 #define LWIP_IPV6                  1
 #define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS
 #define NO_SYS                     1
-#define LWIP_SOCKET                (NO_SYS==0)
-#define LWIP_NETCONN               (NO_SYS==0)
+#define LWIP_SOCKET                0
+#define LWIP_NETCONN               0
 #define LWIP_NETIF_API             (NO_SYS==0)
 
 #define LWIP_IGMP                  LWIP_IPV4
 #define LWIP_ICMP                  LWIP_IPV4
-
+#define LWIP_AUTOIP 0
 #define LWIP_SNMP                  LWIP_UDP
 #define MIB2_STATS                 LWIP_SNMP
 #ifdef LWIP_HAVE_MBEDTLS
@@ -118,7 +118,7 @@
  */
 #define MEM_USE_POOLS           1
 //#define MEM_LIBC_MALLOC 1
-
+#define MEMP_NUM_FRAG_PBUF 4096
 /**
 * MEMP_USE_CUSTOM_POOLS==1: whether to include a user file lwippools.h
 * that defines additional pools beyond the "standard" ones required
@@ -141,7 +141,7 @@ a lot of data that needs to be copied, this should be set high. */
 /* MEMP_NUM_PBUF: the number of memp struct pbufs. If the application
    sends a lot of data out of ROM (or other static memory), this
    should be set high. */
-#define MEMP_NUM_PBUF           256
+#define MEMP_NUM_PBUF           8192
 /* MEMP_NUM_RAW_PCB: the number of UDP protocol control blocks. One
    per active RAW "connection". */
 #define MEMP_NUM_RAW_PCB        3
@@ -150,13 +150,13 @@ a lot of data that needs to be copied, this should be set high. */
 #define MEMP_NUM_UDP_PCB        8
 /* MEMP_NUM_TCP_PCB: the number of simulatenously active TCP
    connections. */
-#define MEMP_NUM_TCP_PCB        1024
+#define MEMP_NUM_TCP_PCB        4096
 /* MEMP_NUM_TCP_PCB_LISTEN: the number of listening TCP
    connections. */
 #define MEMP_NUM_TCP_PCB_LISTEN 16
 /* MEMP_NUM_TCP_SEG: the number of simultaneously queued TCP
    segments. */
-#define MEMP_NUM_TCP_SEG        1024
+#define MEMP_NUM_TCP_SEG        8192
 /* MEMP_NUM_SYS_TIMEOUT: the number of simulateously active
    timeouts. */
 #define MEMP_NUM_SYS_TIMEOUT    17
@@ -186,7 +186,7 @@ a lot of data that needs to be copied, this should be set high. */
  * for certain critical regions during buffer allocation, deallocation and memory
  * allocation and deallocation.
  */
-#define SYS_LIGHTWEIGHT_PROT    (NO_SYS==0)
+#define SYS_LIGHTWEIGHT_PROT    0
 #define LWIP_PBUF_CUSTOM_DATA void* ctx;
 #define LWIP_SUPPORT_CUSTOM_PBUF 1
 
@@ -201,21 +201,25 @@ a lot of data that needs to be copied, this should be set high. */
 #define LWIP_ALTCP_TLS          (LWIP_TCP)
 #define LWIP_ALTCP_TLS_MBEDTLS  (LWIP_TCP)
 #endif
-
+/*
+	Enable scaling.
+*/
+#define LWIP_WND_SCALE 1
+#define TCP_RCV_SCALE  4
 
 /* Controls if TCP should queue segments that arrive out of
    order. Define to 0 if your device is low on memory. */
 #define TCP_QUEUE_OOSEQ         1
 
 /* TCP Maximum segment size. */
-#define TCP_MSS                 1024
+#define TCP_MSS                 (1500-40)
 
 /* TCP sender buffer space (bytes). */
-#define TCP_SND_BUF             2048
+#define TCP_SND_BUF             TCP_MSS*24
 
 /* TCP sender buffer space (pbufs). This must be at least = 2 *
    TCP_SND_BUF/TCP_MSS for things to work. */
-#define TCP_SND_QUEUELEN       (4 * TCP_SND_BUF/TCP_MSS)
+#define TCP_SND_QUEUELEN       (16 * TCP_SND_BUF/TCP_MSS)
 
 /* TCP writable space (bytes). This must be less than or equal
    to TCP_SND_BUF. It is the amount of space which must be
@@ -233,9 +237,10 @@ a lot of data that needs to be copied, this should be set high. */
 
 
 /* ---------- ARP options ---------- */
-#define LWIP_ARP                1
+#define LWIP_ARP                0
 #define ARP_TABLE_SIZE          10
 #define ARP_QUEUEING            1
+#define LWIP_ETHERNET 0
 
 
 /* ---------- IP options ---------- */
@@ -259,7 +264,7 @@ a lot of data that needs to be copied, this should be set high. */
 /* ---------- DHCP options ---------- */
 /* Define LWIP_DHCP to 1 if you want DHCP configuration of
    interfaces. */
-#define LWIP_DHCP               LWIP_UDP
+#define LWIP_DHCP               0
 
 /* 1 if you want to do an ARP check on the offered address
    (recommended). */
@@ -267,7 +272,7 @@ a lot of data that needs to be copied, this should be set high. */
 
 
 /* ---------- AUTOIP options ------- */
-#define LWIP_AUTOIP            (LWIP_DHCP)
+#define LWIP_AUTOIP            0
 #define LWIP_DHCP_AUTOIP_COOP  (LWIP_DHCP && LWIP_AUTOIP)
 
 

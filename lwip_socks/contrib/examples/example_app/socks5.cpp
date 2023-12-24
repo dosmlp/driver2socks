@@ -1,6 +1,10 @@
 #include "socks5.h"
 
-namespace tun2socks {
+#include <iostream>
+
+namespace driver2socks {
+
+	using namespace asio;
 
 	AuthMethod::AuthMethod(SOCKS5METHOD method) : _method(method){}
 
@@ -79,11 +83,11 @@ namespace tun2socks {
 		_next = SEND;
 	}
 
-	Socket5Client::Socket5Client(asio::io_context& ctx, std::unique_ptr<AuthMethod>&& auth)
-		: _socket(ctx)
+	Socket5Client::Socket5Client(asio::io_context& ctx, DRIVER2SOCKSConfig::Ptr cfg)
+		:socks_cfg_(cfg)
+		,_socket(ctx)
 		, _resolver(ctx)
 		, _strand(ctx)
-		,  _auth(std::move(auth))
 		, _connected(false)
 		, _closed(true)
 		, _relayed(false)
@@ -259,4 +263,51 @@ namespace tun2socks {
 		memcpy(buffer.data() + 6 + address_length, data, data_len);
 		return buffer;
 	}
+
+	bool Socket5Client::doConnect(const std::string& proxy_ip, uint16_t proxy_port)
+	{
+		if (_connected) return true;
+		asio::error_code ec;
+		asio::ip::tcp::endpoint ed(ip::address::from_string(proxy_ip,ec), proxy_port);
+		if (ec) {
+			std::cerr << "string to ip::address error" << std::endl;
+			return false;
+		}
+
+		_socket.async_connect(ed, [this](asio::error_code ec)
+		{
+			if (!ec) {
+				_connected = true;
+				doHandshake();
+			} else {
+				std::cerr << "connect to socks_server error" << std::endl;
+			}
+		});
+	}
+	void Socket5Client::doHandshake()
+	{
+		std::size_t bytes_to_write = socks_cfg_->proxy_username.empty() ? 3 : 4;
+		asio::streambuf request;
+		asio::mutable_buffer b = request.prepare(bytes_to_write);
+		char* p = asio::buffer_cast<char*>(b);
+
+		write_uint8(5, p); // SOCKS VERSION 5.
+		if (socks_cfg_->proxy_username.empty()) {
+			write_uint8(1, p); // 1 authentication method (no auth)
+			write_uint8(0, p); // no authentication
+		} else {
+			write_uint8(2, p); // 2 authentication methods
+			write_uint8(0, p); // no authentication
+			write_uint8(2, p); // username/password
+		}
+		request.commit(bytes_to_write);
+		auto self = shared_from_this();
+		asio::async_write(_socket, request.data(), asio::transfer_exactly(bytes_to_write), [self](asio::error_code ec, size_t size) {
+			if (ec) {
+				std::cerr << "handshake error" << std::endl;
+			}
+		});
+	}
+
+
 }

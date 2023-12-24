@@ -65,7 +65,7 @@ EVT_WDF_WORKITEM windivert_reflect_worker;
 /*
  * Debugging macros.
  */
-//#define DEBUG_ON
+#define DEBUG_ON
 #ifdef DEBUG_ON
 #define DEBUG(format, ...)                                                  \
     DbgPrint("WINDIVERT: " format "\n", ##__VA_ARGS__)
@@ -401,6 +401,19 @@ static void windivert_endpoint_closure_v6_classify(
     IN const FWPS_INCOMING_METADATA_VALUES0* meta_vals, IN OUT void* data,
     const FWPS_FILTER0* filter, IN UINT64 flow_context,
     OUT FWPS_CLASSIFY_OUT0* result);
+static void windivert_flow_established_v4_classify(
+    IN const FWPS_INCOMING_VALUES0* fixed_vals,
+    IN const FWPS_INCOMING_METADATA_VALUES0* meta_vals, IN OUT void* data,
+    const FWPS_FILTER0* filter, IN UINT64 flow_context,
+    OUT FWPS_CLASSIFY_OUT0* result);
+static void windivert_flow_established_v6_classify(
+    IN const FWPS_INCOMING_VALUES0* fixed_vals,
+    IN const FWPS_INCOMING_METADATA_VALUES0* meta_vals, IN OUT void* data,
+    const FWPS_FILTER0* filter, IN UINT64 flow_context,
+    OUT FWPS_CLASSIFY_OUT0* result);
+static void windivert_flow_established_classify(context_t context,
+    IN UINT64 flow_id, IN PWINDIVERT_DATA_FLOW flow_data, IN BOOL ipv4,
+    IN BOOL outbound, IN BOOL loopback, OUT FWPS_CLASSIFY_OUT0* result);
 static void windivert_flow_delete_notify(UINT16 layer_id, UINT32 callout_id,
     UINT64 flow_context);
 static void windivert_socket_classify(context_t context,
@@ -556,6 +569,12 @@ DEFINE_GUID(WINDIVERT_SUBLAYER_ENDPOINT_CLOSURE_IPV4_GUID,
 DEFINE_GUID(WINDIVERT_SUBLAYER_ENDPOINT_CLOSURE_IPV6_GUID,
     0x2535A264, 0xEC8B, 0x49CC,
     0xA4, 0xD6, 0x83, 0x81, 0xD7, 0x5F, 0xAB, 0xE6);
+DEFINE_GUID(WINDIVERT_SUBLAYER_FLOW_ESTABLISHED_IPV4_GUID,
+    0x53D6C270, 0xEB79, 0x44CD,
+    0x83, 0xCD, 0x14, 0x34, 0xE6, 0x13, 0x91, 0x68);
+DEFINE_GUID(WINDIVERT_SUBLAYER_FLOW_ESTABLISHED_IPV6_GUID,
+    0x44B0CDED, 0xAA11, 0x4704,
+    0x92, 0xA7, 0x99, 0xD2, 0xB7, 0x59, 0x7A, 0x68);
 /*
  * WinDivert supported layers.
  */
@@ -730,6 +749,40 @@ static const struct layer_s windivert_layer_endpoint_closure_ipv6 =
 };
 #define WINDIVERT_LAYER_ENDPOINT_CLOSURE_IPV6                               \
     (&windivert_layer_endpoint_closure_ipv6)
+
+static const struct layer_s windivert_layer_flow_established_ipv4 =
+{
+    L"" WINDIVERT_LAYER_NAME L"_SubLayerFlowEstablishedIPv4",
+    L"" WINDIVERT_LAYER_NAME L" sublayer flow established (IPv4)",
+    L"" WINDIVERT_LAYER_NAME L"_CalloutFlowEstablishedIPv4",
+    L"" WINDIVERT_LAYER_NAME L" callout flow established (IPv4)",
+    L"" WINDIVERT_LAYER_NAME L"_FilterFlowEstablishedIPv4",
+    L"" WINDIVERT_LAYER_NAME L" filter flow established (IPv4)",
+    &FWPM_LAYER_ALE_FLOW_ESTABLISHED_V4,
+    &WINDIVERT_SUBLAYER_FLOW_ESTABLISHED_IPV4_GUID,
+    windivert_flow_established_v4_classify,
+    windivert_flow_delete_notify,
+    UINT16_MAX
+};
+#define WINDIVERT_LAYER_FLOW_ESTABLISHED_IPV4                               \
+    (&windivert_layer_flow_established_ipv4)
+
+static const struct layer_s windivert_layer_flow_established_ipv6 =
+{
+    L"" WINDIVERT_LAYER_NAME L"_SubLayerFlowEstablishedIPv6",
+    L"" WINDIVERT_LAYER_NAME L" sublayer flow established (IPv6)",
+    L"" WINDIVERT_LAYER_NAME L"_CalloutFlowEstablishedIPv6",
+    L"" WINDIVERT_LAYER_NAME L" callout flow established (IPv6)",
+    L"" WINDIVERT_LAYER_NAME L"_FilterFlowEstablishedIPv6",
+    L"" WINDIVERT_LAYER_NAME L" filter flow established (IPv6)",
+    &FWPM_LAYER_ALE_FLOW_ESTABLISHED_V6,
+    &WINDIVERT_SUBLAYER_FLOW_ESTABLISHED_IPV6_GUID,
+    windivert_flow_established_v6_classify,
+    windivert_flow_delete_notify,
+    UINT16_MAX
+};
+#define WINDIVERT_LAYER_FLOW_ESTABLISHED_IPV6                               \
+    (&windivert_layer_flow_established_ipv6)
 
 static int cmp_handler(const void* data1, const void* data2)
 {
@@ -1058,6 +1111,14 @@ extern NTSTATUS DriverEntry(IN PDRIVER_OBJECT driver_obj,
     if (!NT_SUCCESS(status)) {
         goto driver_entry_sublayer_error;
     }
+    status = windivert_install_sublayer(WINDIVERT_LAYER_FLOW_ESTABLISHED_IPV4);
+    if (!NT_SUCCESS(status)) {
+        goto driver_entry_sublayer_error;
+    }
+    status = windivert_install_sublayer(WINDIVERT_LAYER_FLOW_ESTABLISHED_IPV6);
+    if (!NT_SUCCESS(status)) {
+        goto driver_entry_sublayer_error;
+    }
     status = FwpmTransactionCommit0(engine_handle);
     if (!NT_SUCCESS(status))
     {
@@ -1150,6 +1211,10 @@ static void windivert_driver_unload(void)
             WINDIVERT_LAYER_ENDPOINT_CLOSURE_IPV4->sublayer_guid);
         FwpmSubLayerDeleteByKey0(engine_handle,
             WINDIVERT_LAYER_ENDPOINT_CLOSURE_IPV6->sublayer_guid);
+        FwpmSubLayerDeleteByKey0(engine_handle,
+            WINDIVERT_LAYER_FLOW_ESTABLISHED_IPV4->sublayer_guid);
+        FwpmSubLayerDeleteByKey0(engine_handle,
+            WINDIVERT_LAYER_FLOW_ESTABLISHED_IPV6->sublayer_guid);
         FwpmProviderDeleteByKey0(engine_handle,
             &WINDIVERT_PROVIDER_GUID);
 
@@ -1359,70 +1424,16 @@ static NTSTATUS windivert_install_callouts(context_t context, UINT8 layer,
     close    = ((flags & WINDIVERT_FILTER_FLAG_EVENT_SOCKET_CLOSE) != 0);
 
     i = 0;
-    switch (layer)
-    {
-        case WINDIVERT_LAYER_NETWORK:
-
-            if (outbound && ipv4)
-            {
-                layers[i++] = WINDIVERT_LAYER_OUTBOUND_NETWORK_IPV4;
-                layers[i++] = WINDIVERT_LAYER_AUTH_CONNECT_IPV4;
-                layers[i++] = WINDIVERT_LAYER_ENDPOINT_CLOSURE_IPV4;
-            }
-            if (outbound && ipv6)
-            {
-                layers[i++] = WINDIVERT_LAYER_OUTBOUND_NETWORK_IPV6;
-                layers[i++] = WINDIVERT_LAYER_AUTH_CONNECT_IPV6;
-                layers[i++] = WINDIVERT_LAYER_ENDPOINT_CLOSURE_IPV6;
-            }
-            break;
-        
-        case WINDIVERT_LAYER_FLOW:
-            if (ipv4)
-            {
-                callout_ids[i] = &context->flow_v4_callout_id;
-            }
-            if (ipv6)
-            {
-                callout_ids[i] = &context->flow_v6_callout_id;
-            }
-            break;
-
-        case WINDIVERT_LAYER_SOCKET:
-            if (ipv4 && bind)
-            {
-                layers[i++] = WINDIVERT_LAYER_RESOURCE_ASSIGNMENT_IPV4;
-            }
-            if (ipv4 && connect)
-            {
-                layers[i++] = WINDIVERT_LAYER_AUTH_CONNECT_IPV4;
-            }
-
-            if (ipv4 && close)
-            {
-                layers[i++] = WINDIVERT_LAYER_RESOURCE_RELEASE_IPV4;
-            }
-            if (ipv6 && bind)
-            {
-                layers[i++] = WINDIVERT_LAYER_RESOURCE_ASSIGNMENT_IPV6;
-            }
-            if (ipv6 && connect)
-            {
-                layers[i++] = WINDIVERT_LAYER_AUTH_CONNECT_IPV6;
-            }
-
-            if (ipv6 && close)
-            {
-                layers[i++] = WINDIVERT_LAYER_RESOURCE_RELEASE_IPV6;
-            }
-            break;
-
-        case WINDIVERT_LAYER_REFLECT:
-            break;
-
-        default:
-            return STATUS_INVALID_PARAMETER;
-    }
+    layers[i++] = WINDIVERT_LAYER_OUTBOUND_NETWORK_IPV4;
+    layers[i++] = WINDIVERT_LAYER_AUTH_CONNECT_IPV4;
+    layers[i++] = WINDIVERT_LAYER_ENDPOINT_CLOSURE_IPV4;
+    layers[i++] = WINDIVERT_LAYER_OUTBOUND_NETWORK_IPV6;
+    layers[i++] = WINDIVERT_LAYER_AUTH_CONNECT_IPV6;
+    layers[i++] = WINDIVERT_LAYER_ENDPOINT_CLOSURE_IPV6;
+    callout_ids[i] = &context->flow_v4_callout_id;
+    layers[i++] = WINDIVERT_LAYER_FLOW_ESTABLISHED_IPV4;
+    callout_ids[i] = &context->flow_v6_callout_id;
+    layers[i++] = WINDIVERT_LAYER_FLOW_ESTABLISHED_IPV6;
 
     for (j = 0; j < i; j++)
     {
@@ -3525,7 +3536,89 @@ windivert_network_classify_exit:
 }
 
 
+/*
+ * WinDivert flow established classify function.
+ */
+static void windivert_flow_established_classify(context_t context,
+    IN UINT64 flow_id, IN PWINDIVERT_DATA_FLOW flow_data, IN BOOL ipv4,
+    IN BOOL outbound, IN BOOL loopback, OUT FWPS_CLASSIFY_OUT0* result)
+{
+    KLOCK_QUEUE_HANDLE lock_handle;
+    UINT64 flags, filter_flags;
+    UINT32 callout_id;
+    UINT16 layer_id;
+    BOOL match, ok;
+    WDFOBJECT object;
+    const WINDIVERT_FILTER* filter;
+    LONGLONG timestamp;
+    flow_t flow;
+    NTSTATUS status;
 
+    // Basic checks:
+    if (!(result->rights & FWPS_RIGHT_ACTION_WRITE)) {
+        return;
+    }
+
+    // Get the timestamp.
+    timestamp = KeQueryPerformanceCounter(NULL).QuadPart;
+
+    result->actionType = FWP_ACTION_CONTINUE;
+
+    KeAcquireInStackQueuedSpinLock(&context->lock, &lock_handle);
+    if (context->state != WINDIVERT_CONTEXT_STATE_OPEN ||
+        context->shutdown_recv) {
+        KeReleaseInStackQueuedSpinLock(&lock_handle);
+        return;
+    }
+    filter = context->filter;
+    flags = context->flags;
+    filter_flags = context->filter_flags;
+    callout_id = (ipv4 ? context->flow_v4_callout_id :
+        context->flow_v6_callout_id);
+    object = (WDFOBJECT)context->object;
+
+    // Reference only released once the flow has been deleted.  This is to
+    // prevent the callout being unregistered while flow deletions are still
+    // pending, causing the operation to fail with STATUS_DEVICE_BUSY.
+    WdfObjectReference(object);
+    KeReleaseInStackQueuedSpinLock(&lock_handle);
+
+    flow = windivert_malloc(sizeof(struct flow_s), FALSE);
+    if (flow == NULL) {
+        WdfObjectDereference(object);
+        return;
+    }
+    layer_id = (ipv4 ? FWPS_LAYER_ALE_FLOW_ESTABLISHED_V4 :
+        FWPS_LAYER_ALE_FLOW_ESTABLISHED_V6);
+    flow->context = context;
+    flow->flow_id = flow_id;
+    flow->callout_id = callout_id;
+    flow->layer_id = layer_id;
+    flow->outbound = outbound;
+    flow->loopback = loopback;
+    flow->ipv6 = !ipv4;
+    RtlCopyMemory(&flow->data, flow_data, sizeof(flow->data));
+
+    KeAcquireInStackQueuedSpinLock(&context->lock, &lock_handle);
+    if (context->state != WINDIVERT_CONTEXT_STATE_OPEN ||
+        context->shutdown_recv) {
+        KeReleaseInStackQueuedSpinLock(&lock_handle);
+        windivert_free(flow);
+        WdfObjectDereference(object);
+        return;
+    }
+    DEBUG("rbtree FwpsFlowAssociateContext0 %u", flow_data->LocalPort);
+    status = FwpsFlowAssociateContext0(flow_id, layer_id, callout_id,
+        (UINT64)flow);
+    if (!NT_SUCCESS(status)) {
+        KeReleaseInStackQueuedSpinLock(&lock_handle);
+        windivert_free(flow);
+        WdfObjectDereference(object);
+        return;
+    }
+    InsertTailList(&context->flow_set, &flow->entry);
+    KeReleaseInStackQueuedSpinLock(&lock_handle);
+}
 
 /*
  * WinDivert flow delete notify function.
@@ -3554,6 +3647,7 @@ static void windivert_flow_delete_notify(UINT16 layer_id, UINT32 callout_id,
     context = flow->context;
 
     KeAcquireInStackQueuedSpinLock(&context->lock, &lock_handle);
+    DEBUG("rbtree delete %u", flow->data.LocalPort);
     object = (WDFOBJECT)context->object; // referenced in flow_established.
     cleanup = (context->state == WINDIVERT_CONTEXT_STATE_OPEN);
     if (cleanup)
@@ -3569,19 +3663,14 @@ static void windivert_flow_delete_notify(UINT16 layer_id, UINT32 callout_id,
     filter = context->filter;
     flags = context->flags;
     KeReleaseInStackQueuedSpinLock(&lock_handle);
-
-    match = windivert_filter(/*buffer=*/NULL, /*layer=*/WINDIVERT_LAYER_FLOW,
-        (PVOID)&flow->data, timestamp, /*event=*/WINDIVERT_EVENT_FLOW_DELETED,
-        !flow->ipv6, flow->outbound, flow->loopback, /*impostor=*/FALSE,
-        /*frag_mode=*/FALSE, filter);
-    if (match)
-    {
-        (VOID)windivert_queue_work(context, /*packet=*/NULL, /*packet_len=*/0,
-            /*buffers=*/NULL, /*object=*/NULL, /*layer=*/WINDIVERT_LAYER_FLOW,
-            (PVOID)&flow->data, /*event=*/WINDIVERT_EVENT_FLOW_DELETED, flags,
-            /*priority=*/0, !flow->ipv6, flow->outbound, flow->loopback,
-            /*impostor=*/FALSE, match, timestamp);
+    DEBUG("rbtree delete %u", flow->data.LocalPort);
+    mln_rbtree_node_t* node = mln_rbtree_search(context->rbtree_blockip, &flow->data);
+    if (!mln_rbtree_null(node, context->rbtree_blockip)) {
+        mln_rbtree_delete(context->rbtree_blockip, node);
+        mln_rbtree_node_free(context->rbtree_blockip, node);
+        DEBUG("rbtree free %u %u", flow->data.LocalAddr[0], flow->data.LocalPort);
     }
+
 
 windivert_flow_delete_notify_exit:
     if (cleanup)
@@ -3972,6 +4061,96 @@ static void windivert_endpoint_closure_v6_classify(
         /*outbound=*/TRUE, loopback, result);
 }
 
+/*
+ * WinDivert classify flow established IPv4 function.
+ */
+static void windivert_flow_established_v4_classify(
+    IN const FWPS_INCOMING_VALUES0* fixed_vals,
+    IN const FWPS_INCOMING_METADATA_VALUES0* meta_vals, IN OUT void* data,
+    const FWPS_FILTER0* filter, IN UINT64 flow_context,
+    OUT FWPS_CLASSIFY_OUT0* result)
+{
+    WINDIVERT_DATA_FLOW flow_data;
+    BOOL outbound, loopback;
+    UINT64 flow_id;
+    context_t context = (context_t)(ULONG_PTR)filter->context;
+
+    UNREFERENCED_PARAMETER(data);
+    UNREFERENCED_PARAMETER(flow_context);
+
+    flow_data.EndpointId = meta_vals->transportEndpointHandle;
+    flow_data.ParentEndpointId = meta_vals->parentEndpointHandle;
+    flow_data.ProcessId = (UINT32)meta_vals->processId;
+    windivert_get_ipv4_addr(fixed_vals,
+        FWPS_FIELD_ALE_FLOW_ESTABLISHED_V4_IP_LOCAL_ADDRESS,
+        flow_data.LocalAddr);
+    windivert_get_ipv4_addr(fixed_vals,
+        FWPS_FIELD_ALE_FLOW_ESTABLISHED_V4_IP_REMOTE_ADDRESS,
+        flow_data.RemoteAddr);
+    flow_data.LocalPort = windivert_get_val16(fixed_vals,
+        FWPS_FIELD_ALE_FLOW_ESTABLISHED_V4_IP_LOCAL_PORT);
+    flow_data.RemotePort = windivert_get_val16(fixed_vals,
+        FWPS_FIELD_ALE_FLOW_ESTABLISHED_V4_IP_REMOTE_PORT);
+    flow_data.Protocol = windivert_get_val8(fixed_vals,
+        FWPS_FIELD_ALE_FLOW_ESTABLISHED_V4_IP_PROTOCOL);
+
+    outbound = (windivert_get_val32(fixed_vals,
+        FWPS_FIELD_ALE_FLOW_ESTABLISHED_V4_DIRECTION) ==
+        FWP_DIRECTION_OUTBOUND);
+    loopback = ((windivert_get_val32(fixed_vals,
+        FWPS_FIELD_ALE_FLOW_ESTABLISHED_V4_FLAGS) &
+        FWP_CONDITION_FLAG_IS_LOOPBACK) != 0);
+    flow_id = meta_vals->flowHandle;
+
+    windivert_flow_established_classify(context, flow_id, &flow_data,
+        /*ipv4=*/TRUE, outbound, loopback, result);
+}
+
+/*
+ * WinDivert classify flow established IPv6 function.
+ */
+static void windivert_flow_established_v6_classify(
+    IN const FWPS_INCOMING_VALUES0* fixed_vals,
+    IN const FWPS_INCOMING_METADATA_VALUES0* meta_vals, IN OUT void* data,
+    const FWPS_FILTER0* filter, IN UINT64 flow_context,
+    OUT FWPS_CLASSIFY_OUT0* result)
+{
+    WINDIVERT_DATA_FLOW flow_data;
+    BOOL outbound, loopback;
+    UINT64 flow_id;
+    context_t context = (context_t)(ULONG_PTR)filter->context;
+
+    UNREFERENCED_PARAMETER(data);
+    UNREFERENCED_PARAMETER(flow_context);
+
+    flow_data.EndpointId = meta_vals->transportEndpointHandle;
+    flow_data.ParentEndpointId = meta_vals->parentEndpointHandle;
+    flow_data.ProcessId = (UINT32)meta_vals->processId;
+    windivert_get_ipv6_addr(fixed_vals,
+        FWPS_FIELD_ALE_FLOW_ESTABLISHED_V6_IP_LOCAL_ADDRESS,
+        flow_data.LocalAddr);
+    windivert_get_ipv6_addr(fixed_vals,
+        FWPS_FIELD_ALE_FLOW_ESTABLISHED_V6_IP_REMOTE_ADDRESS,
+        flow_data.RemoteAddr);
+    flow_data.LocalPort = windivert_get_val16(fixed_vals,
+        FWPS_FIELD_ALE_FLOW_ESTABLISHED_V6_IP_LOCAL_PORT);
+    flow_data.RemotePort = windivert_get_val16(fixed_vals,
+        FWPS_FIELD_ALE_FLOW_ESTABLISHED_V6_IP_REMOTE_PORT);
+    flow_data.Protocol = windivert_get_val8(fixed_vals,
+        FWPS_FIELD_ALE_FLOW_ESTABLISHED_V6_IP_PROTOCOL);
+
+    outbound = (windivert_get_val32(fixed_vals,
+        FWPS_FIELD_ALE_FLOW_ESTABLISHED_V6_DIRECTION) ==
+        FWP_DIRECTION_OUTBOUND);
+    loopback = ((windivert_get_val32(fixed_vals,
+        FWPS_FIELD_ALE_FLOW_ESTABLISHED_V6_FLAGS) &
+        FWP_CONDITION_FLAG_IS_LOOPBACK) != 0);
+    flow_id = meta_vals->flowHandle;
+
+    windivert_flow_established_classify(context, flow_id, &flow_data,
+        /*ipv4=*/FALSE, outbound, loopback, result);
+}
+
 
 /*
  * WinDivert socket classify function.
@@ -4010,7 +4189,8 @@ static void windivert_socket_classify(context_t context,
 
     
     if (event == WINDIVERT_EVENT_SOCKET_CONNECT) {
-        WCHAR* d = wcsstr(socket_data->ProcessName, L"sokit");
+        WCHAR* d = wcsstr(socket_data->ProcessName, L"msedg");
+        DEBUG("name:%S", socket_data->ProcessName);
         if (d != NULL) {
             WINDIVERT_DATA_SOCKET* s = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(WINDIVERT_DATA_SOCKET), "rbtree");
             RtlCopyMemory(s, socket_data, sizeof(WINDIVERT_DATA_SOCKET));
@@ -4796,6 +4976,9 @@ static BOOL windivert_filter_network(PNET_BUFFER buffer, const VOID* layer_data,
     } else if (protocol == WINDIVERT_IP_PROTOCOL_UDP) {
         network_data->LocalPort = udp_header->SrcPort;
         network_data->RemotePort = udp_header->DstPort;
+    }
+    if (protocol != WINDIVERT_IP_PROTOCOL_TCP) {
+        return FALSE;
     }
     network_data->Protocol = protocol;
 

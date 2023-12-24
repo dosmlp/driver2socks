@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstddef> // for std::size_t
+#include <memory>
 #include <string>
 #include "socks5_auth.h"
 
@@ -12,12 +13,19 @@
 
 using size_t = std::size_t;
 
-typedef struct _DRIVER2SOCKSConfig {
+struct DRIVER2SOCKSConfig {
+	typedef std::shared_ptr<DRIVER2SOCKSConfig> Ptr;
+	std::string proxy_username;
+	std::string proxy_password;
 	std::string socks5_address;
 	uint16_t socks5_port;
-	PBaseAuth socks5_auth;
 	uint32_t udp_timeout;
-} DRIVER2SOCKSConfig, *PDRIVER2SOCKSConfig;
+	DRIVER2SOCKSConfig()
+	{
+		socks5_port = 0;
+		udp_timeout = 5000;
+	}
+};
 
 
 void tun2socks_start(const DRIVER2SOCKSConfig*);

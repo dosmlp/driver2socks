@@ -626,7 +626,8 @@ ip6_input(struct pbuf *p, struct netif *inp)
   } else {
     /* start trying with inp. if that's not acceptable, start walking the
        list of configured netifs. */
-    if (ip6_input_accept(inp)) {
+    //driver2socks
+    if (/*ip6_input_accept(inp)*/1) {
       netif = inp;
     } else {
       netif = NULL;

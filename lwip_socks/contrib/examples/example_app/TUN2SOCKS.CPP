@@ -18,8 +18,9 @@
 #include "lwipstack.h"
 #include "socks5.h"
 #include "WindivertDriver.h"
+#include "iocontext.h"
+#include "socks_client.hpp"
 extern "C"{
-#include "lwip/timeouts.h"
 #include "lwip/priv/tcp_priv.h"
 }
 
@@ -44,7 +45,7 @@ struct DNSHeader
     uint16_t			usAdditionalCount;	// Additional字段个数
 };
 
-using namespace tun2socks;
+using namespace driver2socks;
 
 static HANDLE g_tap_handle = INVALID_HANDLE_VALUE;
 static bool to_read = true;
@@ -128,7 +129,7 @@ int tun2socks_socks5_proxy_connect_impl(std::shared_ptr<Socket5Client>& context,
     if (context == NULL || tpcb == NULL) {
         return ERR_RST;
     }
-
+    //连接到代理服务器
     std::string proxy_ip(g_config->socks5_address);
     if (!context->connect(proxy_ip, g_config->socks5_port)) {
         close_on_context(context);
@@ -164,6 +165,7 @@ int tun2socks_socks5_proxy_connect_impl(std::shared_ptr<Socket5Client>& context,
         g_config->socks5_address.data(), g_config->socks5_port);
     printf("%s\n", connect_log);
 
+    //通过代理服务器建立到目标ip的连接
     if (!context->establish(hostname, port)) {
         close_on_context(context);
         return ERR_ABRT; // ERR_RST
@@ -181,105 +183,109 @@ int tun2socks_socks5_proxy_connect(std::shared_ptr<Socket5Client>& context, stru
     }
 }
 
-err_t tcp_on_recv(std::shared_ptr<Socket5Client> context, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
+err_t tcp_on_recv(void* arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
     if (tpcb == NULL)
         return ERR_VAL;
     if (err != ERR_OK || p == NULL || 0 == p->len) { // p == NULL indicates EOF
-        close_on_context(context);
+        LWIPStack::lwip_tcp_close(tpcb);
         return ERR_OK;
     }
-    uint32_t data_len = p->tot_len;
+    uint16_t data_len = p->tot_len;
 
-    auto buffer = std::shared_ptr<u_char>((u_char*)malloc(data_len), [](u_char* p) {
-        if (p)
-            free(p);
-    });
+    auto buffer = std::shared_ptr<uint8_t>((uint8_t*)malloc(data_len), [](uint8_t* p) { if (p) free(p); });
     auto tp = buffer.get();
     pbuf_copy_partial(p, tp, data_len, 0);
     pbuf_free(p);
+    //std::cout << "tcp:"<<(uint64_t)tpcb<<" on recv:" << p->tot_len << "\n";
+    //std::cout << "tcp arg:" << (uint64_t)tpcb->callback_arg << "\n";
 
-    context->sendAsync(buffer, data_len, [context](const asio::error_code& err, std::size_t sz) {
-        if (err) {
-            close_on_context(context);
-            return;
-        }
-    });
+    auto sc5 = static_cast<std::shared_ptr<driver2socks::socks_client>*>(tpcb->callback_arg);
+
+    bool ret = false;
+    for (int i = 10;i < 20 ;++i) {
+        ret = (*sc5)->sendData(tp, data_len);
+        if (ret) break;
+        Sleep(i);
+    }
+    if (!ret) {
+        LWIPStack::lwip_tcp_close(tpcb);
+        return  ERR_ABRT;
+    }
+
     LWIPStack::getInstance().lwip_tcp_recved(tpcb, data_len);
     return ERR_OK;
 }
 
-std::shared_ptr<Socket5Client> tun2socks_create_context(void *arg, tcp_pcb* tpcb) {
-    if (arg == NULL || tpcb == NULL) {
-        return NULL;
-    }
-    auto ioctx = (asio::io_context*)arg;
-    auto context = std::make_shared<Socket5Client>(*ioctx, std::move(get_auth_method(g_config->socks5_auth)));
-    context->tpcb = tpcb;
-    return context;
-}
+
 //虚拟tcp接收到连接成功回调,构造一个socks5客户端然后连接到目标
 err_t tcp_on_accept(void *arg, struct tcp_pcb *newpcb, err_t err) {
     if (err != ERR_OK || newpcb == NULL)
         return ERR_VAL;
-    std::shared_ptr<Socket5Client> context = tun2socks_create_context(arg, newpcb);
-    if (context == NULL)
-        return ERR_RST;
-    if (ERR_OK != (err = tun2socks_socks5_proxy_connect(context, context->tpcb.load())))
-        return ERR_OK;
+
+    char strlocalip[64] = { 0 };
+    uint32_t localip[4] = { 0 };
+    if (newpcb->local_ip.type == IPADDR_TYPE_V4) {
+        localip[0] = WinDivertHelperNtohl(newpcb->local_ip.u_addr.ip4.addr);
+        WinDivertHelperFormatIPv4Address(localip[0], strlocalip, 64);
+    } else {
+        WinDivertHelperNtohIpv6Address(newpcb->local_ip.u_addr.ip6.addr, localip);
+        WinDivertHelperFormatIPv6Address(localip, strlocalip, 64);
+    }
+    char strremoteip[64] = { 0 };
+    uint32_t remoteip[4] = { 0 };
+    if (newpcb->remote_ip.type == IPADDR_TYPE_V4) {
+        remoteip[0] = WinDivertHelperNtohl(newpcb->remote_ip.u_addr.ip4.addr);
+        WinDivertHelperFormatIPv4Address(remoteip[0], strremoteip, 64);
+    } else {
+        WinDivertHelperNtohIpv6Address(newpcb->remote_ip.u_addr.ip6.addr, remoteip);
+        WinDivertHelperFormatIPv6Address(remoteip, strremoteip, 64);
+    }
+    std::cout << "newtcp local ip:" << strlocalip << " local port:"<<(int)newpcb->local_port<< " remote ip:" << strremoteip << " remote port:" << (int)newpcb->remote_port << "\n";
+
+
+
+    //创建一个socks5代理客户端并关联tcp_pcb
+    std::shared_ptr<driver2socks::socks_client> context = std::make_shared<driver2socks::socks_client>(IoContext::getIoContext());
+    auto sk5 = new std::shared_ptr<driver2socks::socks_client>(context);
+    newpcb->callback_arg = sk5;
+    context->lwip_tcp_pcb_ = newpcb;
     //设置tcp堆栈接收数据回调
-    LWIPStack::lwip_tcp_receive(newpcb, [context](void* arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) mutable {
-        return tcp_on_recv(context, context->tpcb.load(), p, err);
-    });
-    context->srbf = std::shared_ptr<u_char>((u_char*)mem_malloc(TCP_MSS), [](u_char* p) {
-        if (p)
-            mem_free(p);
-    });
-    context->srcb = std::function<Socket5Client::ReceiveAsyncCallback>(
-        [context](const asio::error_code& err, std::size_t sz) mutable {
-        tcp_pcb *tpcb = context->tpcb.load();
-        if (tpcb == NULL || err) {
-            close_on_context(context);
-            return;
-        }
-        else if (sz > 0) {
-            context->spts = GetTickCount();
-        }
-        std::shared_ptr<void> bf(malloc(sz), [](void* p) {
-            if (p)
-                free(p);
-        });
-        // it seems that we don't need extra buffer because the original won't be modified before the next call to receives async.
-        memcpy(bf.get(), context->srbf.get(), sz);
-        LWIPStack::getInstance().strand_tcp_write(tpcb, bf, (u16_t)sz, TCP_WRITE_FLAG_COPY,
-            [context](err_t err) mutable {
-            tcp_pcb *tpcb = context->tpcb.load();
-            if (err != ERR_OK || tpcb == NULL)
-                close_on_context(context);
-            else {
-                LWIPStack::getInstance().lwip_tcp_output(tpcb);
-                int sent = std::min<int>(TCP_MSS,
-                    LWIPStack::getInstance().lwip_tcp_sndbuf(tpcb));
-                do {
-                    uint32_t ticks = GetTickCount();
-                    if (sent <= 0) {
-                        if ((ticks - context->spts) >= 100) {
-                            close_on_context(context);
-                            break;
-                        }
-                    }
-                    else {
-                        context->spts = ticks;
-                    }
-                    context->receiveAsync(context->srbf, sent, context->srcb);
-                } while (0, 0);
-            }
-        });
+    LWIPStack::lwip_tcp_receive(newpcb, tcp_on_recv);
+    tcp_nagle_disable(newpcb);
+
+    auto callback_socksclient_recv = [](const asio::error_code& err, std::shared_ptr<void> buffer, std::size_t sz, tcp_pcb* tcp) {
         if (err) {
-            close_on_context(context);
+            std::cerr << "callback_socksclient_recv error,close tcp_pcb" << std::endl;
+            LWIPStack::lwip_tcp_close(tcp);
             return;
         }
-    });
-    context->receiveAsync(context->srbf, TCP_MSS, context->srcb);
+
+        LWIPStack::getInstance().strand_tcp_write(tcp, buffer, (u16_t)sz, TCP_WRITE_FLAG_COPY,
+            [](err_t err) {
+                if (err != ERR_OK) {
+                    std::cerr << "tcp_write error:" << (int)err << "\n";
+                    return;
+                }
+            });
+
+        };
+
+    //建立代理通道
+    char hoststr[64] = { 0 };
+    uint32_t ip[4] = { 0 };
+    if (newpcb->local_ip.type == IPADDR_TYPE_V4) {
+        ip[0] = WinDivertHelperNtohl(newpcb->local_ip.u_addr.ip4.addr);
+        WinDivertHelperFormatIPv4Address(ip[0], hoststr, 64);
+    } else {
+        WinDivertHelperNtohIpv6Address(newpcb->local_ip.u_addr.ip6.addr, ip);
+        WinDivertHelperFormatIPv6Address(ip, hoststr, 64);
+    }
+    //开始socks5客户端（建立到服务器的连接并握手）
+    context->start_socks(g_config->socks5_address, g_config->socks5_port, 
+        std::string(hoststr), newpcb->local_port, 
+        callback_socksclient_recv,
+        [](asio::error_code ec) {});
+
     return ERR_OK;
 }
 
@@ -474,41 +480,35 @@ static void tun2socks_dns_listen() {
 }
 
 void tun2socks_start(const DRIVER2SOCKSConfig* config) {
-    static asio::io_context ioctx;
-    static asio::io_context::work work(ioctx);
+
     g_config = config;
     auto driver = std::make_shared<WindivertDriver>();
-    LWIPStack::getInstance().init(ioctx, config);
+    LWIPStack::getInstance().init(IoContext::getIoContext() , config);
     auto t_pcb = LWIPStack::tcp_listen_any();
     auto u_pcb = LWIPStack::udp_listen_any();
-    LWIPStack::lwip_tcp_arg(t_pcb, (void*)(&ioctx));
+
+    LWIPStack::lwip_tcp_arg(t_pcb, nullptr);
+    //注册tcp接收到新的连接时回调函数
     LWIPStack::lwip_tcp_accept(t_pcb, tcp_on_accept);
+
+    //tcp数据注入到驱动入站方向
     LWIPStack::getInstance().set_output_function([driver](struct netif *netif, struct pbuf *p, const ip4_addr_t *ipaddr)->err_t {
         auto buffer = std::make_unique<u_char[]>(p->tot_len);
         pbuf_copy_partial(p, buffer.get(), p->tot_len, 0);
+
         driver->doWrite(std::move(buffer), p->tot_len);
         return ERR_OK;
     });
-
-    driver->run([](pbuf* buf) {
-        LWIPStack::getInstance().strand_ip_input(buf, [](err_t err)
-        {
-	        if (err != ERR_OK)
-	        {
+    //从驱动中读取数据
+    driver->run([](std::shared_ptr<void> bf,size_t size) {
+        LWIPStack::getInstance().strand_ip_input(bf,size, [](err_t err){
+	        if (err != ERR_OK) {
                 std::cerr << "input_ip err" << std::endl;
 	        }
         }); 
     });
-    std::thread(tun2socks_dns_listen).detach();
-    std::thread([]() { ioctx.run(); }).detach();
-    std::thread([]() {
-        while (1) {
-            ioctx.post([] {
-                sys_check_timeouts();
-            });
-            timeBeginPeriod(1);
-            Sleep(1);
-            timeEndPeriod(1);
-        }
-    }).detach();
+
+    system("pause");
+    //std::thread(tun2socks_dns_listen).detach();
+
 }

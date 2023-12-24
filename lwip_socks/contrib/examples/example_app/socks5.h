@@ -4,13 +4,14 @@
 #include <atomic>
 #include <memory>
 #include <cstdint>
-
+#include  "io.hpp"
 #include "socks5_auth.h"
+#include "tun2socks.h"
 
 struct tcp_pcb;
 struct udp_pcb;
 
-namespace tun2socks {
+namespace driver2socks {
 
 	enum AUTHACTION {
 		SEND = 0,
@@ -116,7 +117,7 @@ namespace tun2socks {
 		typedef void SendAsyncCallback(const asio::error_code&, std::size_t);
 		typedef void ReceiveAsyncCallback(const asio::error_code&, std::size_t);
 
-		Socket5Client(asio::io_context&, std::unique_ptr<AuthMethod>&&);
+		Socket5Client(asio::io_context&, DRIVER2SOCKSConfig::Ptr cfg);
 		//连接到代理服务器
 		bool connect(const std::string&, uint16_t);
 		bool associateUDP(bool domain, void* dst_ip, int dst_iplen, uint16_t);
@@ -148,6 +149,10 @@ namespace tun2socks {
         bool pollWrite();
 
 	private:
+		bool doConnect(const std::string& proxy_ip, uint16_t proxy_port);
+		void doHandshake();
+		void doCmdConnect();
+
 		Buffer<uint8_t> _construct_request(COMMAND, ADDRESS_TYPE, const uint8_t*, size_t, uint16_t);
 		Buffer<uint8_t> _construct_request(COMMAND, uint32_t, uint16_t);
 		Buffer<uint8_t> _construct_request(COMMAND, const std::string&, uint16_t);
@@ -156,22 +161,23 @@ namespace tun2socks {
 		Buffer<uint8_t> _construct_udp_request(const std::string&, uint16_t, const uint8_t*, size_t);
 
 	private:
-		std::unique_ptr<AuthMethod>			                _auth;
-		asio::ip::tcp::socket		                _socket;
-		asio::ip::udp::socket		                _u_socket;
-		asio::ip::tcp::resolver		                _resolver;
-		asio::io_service::strand		                _strand;
-		asio::io_service::strand		                _u_strand;
-		asio::io_context&			                _ctx;
+		DRIVER2SOCKSConfig::Ptr socks_cfg_;
+		std::unique_ptr<AuthMethod> _auth;
+		asio::ip::tcp::socket _socket;
+		asio::ip::udp::socket _u_socket;
+		asio::ip::tcp::resolver _resolver;
+		asio::io_service::strand _strand;
+		asio::io_service::strand _u_strand;
+		asio::io_context& _ctx;
 		bool _connected;
 		bool _closed;
 		bool _relayed;
-		asio::ip::udp::endpoint		                _u_bnd;
+		asio::ip::udp::endpoint _u_bnd;
 
 	public:
-		mutable std::atomic<tcp_pcb*>		                tpcb;
-        mutable uint32_t                                    spts;
-        mutable std::function<Socket5Client::ReceiveAsyncCallback>   srcb;
-        mutable std::shared_ptr<u_char>                     srbf;
+		mutable std::atomic<tcp_pcb*> tpcb;
+        mutable uint32_t spts;
+        mutable std::function<Socket5Client::ReceiveAsyncCallback> srcb;
+        mutable std::shared_ptr<u_char> srbf;
 	};
 }
