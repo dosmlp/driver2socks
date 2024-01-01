@@ -12,6 +12,7 @@
 #include "asio_coro_util.hpp"
 #include "iocontext.h"
 #include "ring_buf.hpp"
+#include "netpacket_pool.h"
 
 namespace driver2socks {
 
@@ -302,8 +303,6 @@ namespace driver2socks {
 					self->m_socket.close();
 					//handler(ec, std::shared_ptr<void>(nullptr), 0, self->lwip_tcp_pcb_);
 				} else {
-					inject_total_ += size;
-					//std::cout << "socksclient total write size:" << inject_total_ << "\n";
 					if (buf_send_.GetAvailable() > 0) self->startSend();
 				}
 			});
@@ -311,16 +310,16 @@ namespace driver2socks {
 		template <typename Handler>
 		void startRecv(Handler read_callback)
 		{
-			std::shared_ptr<void> bf(malloc(2048), [](void* p) { if (p) free(p); });
+			std::shared_ptr<NetPacket> bf(_NetPacketPool->getPacket(), [](NetPacket* p) {_NetPacketPool->freePacket(p); });
 			auto self = shared_from_this();
-			m_socket.async_read_some(asio::buffer(bf.get(), 2048), [self,bf,read_callback,this](asio::error_code ec, size_t size) {
+			m_socket.async_read_some(asio::buffer(bf->data, bf->capacity_size), 
+				[self,bf,read_callback,this](asio::error_code ec, size_t size) {
 				if (ec) {
 					std::cout << "socket async_read_some error:" << ec.message() << "\n";
 					self->m_socket.close();
-					read_callback(ec, std::shared_ptr<void>(nullptr), 0, self->lwip_tcp_pcb_);
+					read_callback(ec, std::shared_ptr<NetPacket>(nullptr), 0, self->lwip_tcp_pcb_);
 				} else {
-					recv_total_ += size;
-					//std::cout << "socksclient total read size:" << recv_total_ << "\n";
+					bf->data_len = size;
 					read_callback(ec, bf, size, self->lwip_tcp_pcb_);
 					self->startRecv(read_callback);
 				}
@@ -687,8 +686,6 @@ namespace driver2socks {
 		std::string m_address;
 		std::string m_port;
 		asio::ip::tcp::endpoint m_remote_endp;
-		std::atomic_uint32_t recv_total_ = 0;
-		std::atomic_uint32_t inject_total_ = 0;
 
 		lockfree::spsc::RingBuf<uint8_t, 4096*10> buf_send_;
 	};

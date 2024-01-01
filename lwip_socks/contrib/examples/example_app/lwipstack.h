@@ -15,13 +15,19 @@ extern "C"{
 #include <set>
 #include <memory>
 #include <thread>
-#include <time.h>
 #include <timeapi.h>
 
 #include "tun2socks.h"
 #include "arch/sys_arch.h"
+#include  "spsc_queue.h"
+#include  "netpacket_pool.h"
 
 namespace driver2socks {
+	struct TcpArg
+	{
+		std::shared_ptr<socks_client> sc_client;
+		SPSCQueue<NetPacket::Ptr> queue_send{256};
+	};
 	class LWIPStack {
 	public:
 		inline static LWIPStack& getInstance() {
@@ -111,8 +117,7 @@ namespace driver2socks {
 			return pcb;
 		}
 
-		inline static err_t lwip_tcp_write(struct tcp_pcb *pcb, std::shared_ptr<void> arg, u16_t len, u8_t apiflags) {
-			void* payload = arg.get();
+		inline static err_t lwip_tcp_write(struct tcp_pcb *pcb, void* payload, u16_t len, u8_t apiflags) {
 			return tcp_write(pcb, payload, len, apiflags);
 		}
 
@@ -130,9 +135,11 @@ namespace driver2socks {
 
 		inline static err_t lwip_tcp_close(tcp_pcb* pcb) {
 			if (pcb->callback_arg) {
-				auto p = static_cast<std::shared_ptr<driver2socks::socks_client>*>(pcb->callback_arg);
+
+				std::cout << __FUNCTION__"\n";
+				auto p = static_cast<TcpArg*>(pcb->callback_arg);
 				pcb->callback_arg = nullptr;
-				(*p)->closeSocket();
+				p->sc_client->closeSocket();
 				delete p;
 			}
 
@@ -154,16 +161,42 @@ namespace driver2socks {
 						sys_check_timeouts();
 						});
 					timeBeginPeriod(1);
-					Sleep(1);
+					Sleep(100);
 					timeEndPeriod(1);
 				}
 				}).detach();
 		}
 
-		inline void strand_tcp_write(struct tcp_pcb *pcb, std::shared_ptr<void> arg, u16_t len, u8_t apiflags, std::function<void(err_t)> cb) {
+		inline void strand_tcp_write(struct tcp_pcb *pcb, std::shared_ptr<NetPacket> buff, u16_t len, u8_t apiflags, std::function<void(err_t)> cb) {
 			_strand->post([=]() {
-				auto err = LWIPStack::lwip_tcp_write(pcb, arg, len, apiflags);
-				tcp_output(pcb);
+				err_t err = ERR_OK;
+				if (pcb->state == 0 || TCP_STATE_IS_CLOSING(pcb->state)) return;
+
+				
+				TcpArg* ta = (TcpArg*)(pcb->callback_arg);
+				bool ret = ta->queue_send.try_emplace(buff);
+				if (!ret) {
+					std::cout << "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n";
+				}
+				
+				while (!ta->queue_send.empty()) {
+					std::shared_ptr<NetPacket> np = *(ta->queue_send.front());
+					if (np->data_len > pcb->snd_buf) {
+						std::cout << "np->size > pcb->snd_buf\n";
+						break;
+					}
+					err = LWIPStack::lwip_tcp_write(pcb, np->data, np->data_len, apiflags);
+					err_t err_out = tcp_output(pcb);
+					if (err_out != ERR_OK) {
+						std::cout << "tcp_output fail:" << err_out << "\n";
+					}
+					if (err != ERR_OK) {
+						break;
+					}
+					ta->queue_send.pop();
+					
+				}
+				
 				if (cb != NULL)
 					cb(err);
 			});

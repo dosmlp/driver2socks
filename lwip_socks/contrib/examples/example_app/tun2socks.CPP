@@ -112,82 +112,13 @@ std::unique_ptr<AuthMethod> get_auth_method(const BaseAuth* auth) {
         return NULL;
 }
 
-void close_on_context(const std::shared_ptr<Socket5Client>& socket) {
-    if (socket != NULL) {
-        tcp_pcb* tpcb = socket->tpcb.exchange(NULL);
-        if (tpcb != NULL) {
-            LWIPStack::lwip_tcp_receive(tpcb, NULL);
-            LWIPStack::getInstance().lwip_tcp_close(tpcb);
-        }
-        socket->close();
-        socket->srcb = NULL;
-        socket->srbf = NULL;
-    }
-}
-
-int tun2socks_socks5_proxy_connect_impl(std::shared_ptr<Socket5Client>& context, struct tcp_pcb *tpcb) {
-    if (context == NULL || tpcb == NULL) {
-        return ERR_RST;
-    }
-    //连接到代理服务器
-    std::string proxy_ip(g_config->socks5_address);
-    if (!context->connect(proxy_ip, g_config->socks5_port)) {
-        close_on_context(context);
-        return ERR_ABRT;
-    }
-
-    std::string hostname = "";
-    //u8_t* hostaddr = NULL;
-    int port = 0;
-
-    char hoststr[64] = { 0 };
-    uint32_t ip[4] = { 0 };
-    if (tpcb->local_ip.type == IPADDR_TYPE_V4) {
-        ip[0] = WinDivertHelperNtohl(tpcb->local_ip.u_addr.ip4.addr);
-        WinDivertHelperFormatIPv4Address(ip[0],hoststr, 64);
-    } else
-    {
-        WinDivertHelperNtohIpv6Address(tpcb->local_ip.u_addr.ip6.addr, ip);
-        WinDivertHelperFormatIPv6Address(ip, hoststr, 64);
-    }
-    
-    //bool domain = tun2socks_dns_resolve(ntohl(tpcb->local_ip.), hostname);
-    //if (!domain)
-    //    hostname = get_address_string(tpcb->local_ip.addr);
-    hostname = std::string(hoststr);
-    port = tpcb->local_port;
-    //hostaddr = (u8_t*)&tpcb->local_ip.addr;
-
-    char connect_log[2048];
-    sprintf(connect_log, "Create Tunnel %s:%d -> %s:%d .tcp",
-        hostname.data(),
-        port,
-        g_config->socks5_address.data(), g_config->socks5_port);
-    printf("%s\n", connect_log);
-
-    //通过代理服务器建立到目标ip的连接
-    if (!context->establish(hostname, port)) {
-        close_on_context(context);
-        return ERR_ABRT; // ERR_RST
-    }
-    return ERR_OK;
-}
-
-int tun2socks_socks5_proxy_connect(std::shared_ptr<Socket5Client>& context, struct tcp_pcb *tpcb) {
-    __try {
-        return tun2socks_socks5_proxy_connect_impl(context, tpcb);
-    }
-    __except (1) {
-        close_on_context(context);
-        return ERR_ABRT;
-    }
-}
-
 err_t tcp_on_recv(void* arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
     if (tpcb == NULL)
         return ERR_VAL;
     if (err != ERR_OK || p == NULL || 0 == p->len) { // p == NULL indicates EOF
-        LWIPStack::lwip_tcp_close(tpcb);
+        std::cout << "tcp_on_recv "<<(int64_t)p<<"\n";
+
+        LWIPStack::getInstance().strand_tcp_close(tpcb,[](err_t){});
         return ERR_OK;
     }
     uint16_t data_len = p->tot_len;
@@ -196,19 +127,19 @@ err_t tcp_on_recv(void* arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
     auto tp = buffer.get();
     pbuf_copy_partial(p, tp, data_len, 0);
     pbuf_free(p);
-    //std::cout << "tcp:"<<(uint64_t)tpcb<<" on recv:" << p->tot_len << "\n";
-    //std::cout << "tcp arg:" << (uint64_t)tpcb->callback_arg << "\n";
 
-    auto sc5 = static_cast<std::shared_ptr<driver2socks::socks_client>*>(tpcb->callback_arg);
+
+    auto tcparg = static_cast<TcpArg*>(tpcb->callback_arg);
 
     bool ret = false;
     for (int i = 10;i < 20 ;++i) {
-        ret = (*sc5)->sendData(tp, data_len);
+        ret = tcparg->sc_client->sendData(tp, data_len);
         if (ret) break;
         Sleep(i);
     }
     if (!ret) {
-        LWIPStack::lwip_tcp_close(tpcb);
+        std::cout << "LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL\n";
+        LWIPStack::getInstance().strand_tcp_close(tpcb,[](err_t){});
         return  ERR_ABRT;
     }
 
@@ -246,25 +177,25 @@ err_t tcp_on_accept(void *arg, struct tcp_pcb *newpcb, err_t err) {
 
     //创建一个socks5代理客户端并关联tcp_pcb
     std::shared_ptr<driver2socks::socks_client> context = std::make_shared<driver2socks::socks_client>(IoContext::getIoContext());
-    auto sk5 = new std::shared_ptr<driver2socks::socks_client>(context);
-    newpcb->callback_arg = sk5;
+    TcpArg* targ = new TcpArg;
+    targ->sc_client = context;
+    newpcb->callback_arg = targ;
     context->lwip_tcp_pcb_ = newpcb;
     //设置tcp堆栈接收数据回调
     LWIPStack::lwip_tcp_receive(newpcb, tcp_on_recv);
-    tcp_nagle_disable(newpcb);
+    //tcp_nagle_disable(newpcb);
 
-    auto callback_socksclient_recv = [](const asio::error_code& err, std::shared_ptr<void> buffer, std::size_t sz, tcp_pcb* tcp) {
+    auto callback_socksclient_recv = [](const asio::error_code& err, std::shared_ptr<NetPacket> buffer, std::size_t sz, tcp_pcb* tcp) {
         if (err) {
             std::cerr << "callback_socksclient_recv error,close tcp_pcb" << std::endl;
-            LWIPStack::lwip_tcp_close(tcp);
+            LWIPStack::getInstance().strand_tcp_close(tcp,[](err_t){});
             return;
         }
-
+        
         LWIPStack::getInstance().strand_tcp_write(tcp, buffer, (u16_t)sz, TCP_WRITE_FLAG_COPY,
             [](err_t err) {
                 if (err != ERR_OK) {
                     std::cerr << "tcp_write error:" << (int)err << "\n";
-                    return;
                 }
             });
 
@@ -495,7 +426,8 @@ void tun2socks_start(const DRIVER2SOCKSConfig* config) {
     LWIPStack::getInstance().set_output_function([driver](struct netif *netif, struct pbuf *p, const ip4_addr_t *ipaddr)->err_t {
         auto buffer = std::make_unique<u_char[]>(p->tot_len);
         pbuf_copy_partial(p, buffer.get(), p->tot_len, 0);
-
+        uint16_t len = p->tot_len;
+        //driver->doWrite((uint8_t*)&len, sizeof(uint16_t));
         driver->doWrite(std::move(buffer), p->tot_len);
         return ERR_OK;
     });

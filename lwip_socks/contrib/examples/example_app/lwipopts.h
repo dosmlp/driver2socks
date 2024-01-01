@@ -194,7 +194,7 @@ a lot of data that needs to be copied, this should be set high. */
 /* ---------- TCP options ---------- */
 #define LWIP_TCP                1
 #define TCP_TTL                 255
-#define TCP_TMR_INTERVAL        50
+#define TCP_TMR_INTERVAL        250
 
 #define LWIP_ALTCP              (LWIP_TCP)
 #ifdef LWIP_HAVE_MBEDTLS

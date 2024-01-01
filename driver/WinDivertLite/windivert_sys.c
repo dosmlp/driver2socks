@@ -3607,7 +3607,7 @@ static void windivert_flow_established_classify(context_t context,
         WdfObjectDereference(object);
         return;
     }
-    DEBUG("rbtree FwpsFlowAssociateContext0 %u", flow_data->LocalPort);
+
     status = FwpsFlowAssociateContext0(flow_id, layer_id, callout_id,
         (UINT64)flow);
     if (!NT_SUCCESS(status)) {
@@ -3647,7 +3647,7 @@ static void windivert_flow_delete_notify(UINT16 layer_id, UINT32 callout_id,
     context = flow->context;
 
     KeAcquireInStackQueuedSpinLock(&context->lock, &lock_handle);
-    DEBUG("rbtree delete %u", flow->data.LocalPort);
+
     object = (WDFOBJECT)context->object; // referenced in flow_established.
     cleanup = (context->state == WINDIVERT_CONTEXT_STATE_OPEN);
     if (cleanup)
@@ -3663,7 +3663,7 @@ static void windivert_flow_delete_notify(UINT16 layer_id, UINT32 callout_id,
     filter = context->filter;
     flags = context->flags;
     KeReleaseInStackQueuedSpinLock(&lock_handle);
-    DEBUG("rbtree delete %u", flow->data.LocalPort);
+	
     mln_rbtree_node_t* node = mln_rbtree_search(context->rbtree_blockip, &flow->data);
     if (!mln_rbtree_null(node, context->rbtree_blockip)) {
         mln_rbtree_delete(context->rbtree_blockip, node);
@@ -4201,6 +4201,7 @@ static void windivert_socket_classify(context_t context,
         }
         
     }
+    /*
     if (event == WINDIVERT_EVENT_SOCKET_CLOSE) {
         mln_rbtree_node_t* node = mln_rbtree_search(context->rbtree_blockip, socket_data);
         if (!mln_rbtree_null(node, context->rbtree_blockip)) {
@@ -4211,7 +4212,7 @@ static void windivert_socket_classify(context_t context,
             match = TRUE;
         }
     }
-    
+    */
     if (match)
     {
         ok = windivert_queue_work(context, /*packet=*/NULL, /*packet_len=*/0,
