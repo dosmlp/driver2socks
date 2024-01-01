@@ -431,6 +431,14 @@ void tun2socks_start(const DRIVER2SOCKSConfig* config) {
         driver->doWrite(std::move(buffer), p->tot_len);
         return ERR_OK;
     });
+    LWIPStack::getInstance().set_outputv6_function([driver](struct netif* netif, struct pbuf* p, const ip6_addr_t* ipaddr)->err_t {
+        auto buffer = std::make_unique<u_char[]>(p->tot_len);
+        pbuf_copy_partial(p, buffer.get(), p->tot_len, 0);
+        uint16_t len = p->tot_len;
+        //driver->doWrite((uint8_t*)&len, sizeof(uint16_t));
+        driver->doWrite(std::move(buffer), p->tot_len);
+        return ERR_OK;
+        });
     //从驱动中读取数据
     driver->run([](std::shared_ptr<void> bf,size_t size) {
         LWIPStack::getInstance().strand_ip_input(bf,size, [](err_t err){

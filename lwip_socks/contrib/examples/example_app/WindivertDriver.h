@@ -61,6 +61,7 @@ public:
 		if (IP_HDR_GET_VERSION(buffer.get()) == 6) {
 			addr.IPv6 = 1;
 		}
+
 		WinDivertSend(w_handle_, buffer.get(), len, NULL, &addr);
 #endif
 
@@ -163,9 +164,6 @@ private:
 			}
 			if (windivert_addr.Network.IfIdx != 6) {
 				continue;
-			}
-			if (windivert_addr.IPv6) {
-				std::cout << "ipv6 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
 			}
 
 			WinDivertHelperCalcChecksums(recv_data_, recv_size, &windivert_addr, 0);

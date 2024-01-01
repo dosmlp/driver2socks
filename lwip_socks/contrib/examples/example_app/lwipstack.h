@@ -135,14 +135,11 @@ namespace driver2socks {
 
 		inline static err_t lwip_tcp_close(tcp_pcb* pcb) {
 			if (pcb->callback_arg) {
-
-				std::cout << __FUNCTION__"\n";
 				auto p = static_cast<TcpArg*>(pcb->callback_arg);
 				pcb->callback_arg = nullptr;
 				p->sc_client->closeSocket();
 				delete p;
 			}
-
 
 			LWIPStack::lwip_tcp_receive(pcb, NULL);
             err_t err = tcp_shutdown(pcb, 1, 1) | tcp_close(pcb);
@@ -265,6 +262,10 @@ namespace driver2socks {
 
 		inline void set_output_function(std::function<std::remove_pointer<netif_output_fn>::type> f) {
 			_loopback->output = f;
+		}
+		inline void set_outputv6_function(std::function<std::remove_pointer<netif_output_ip6_fn>::type> f)
+		{
+			_loopback->output_ip6 = f;
 		}
 
 		inline ~LWIPStack() {
