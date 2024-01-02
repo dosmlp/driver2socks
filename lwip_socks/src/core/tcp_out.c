@@ -1939,7 +1939,8 @@ tcp_output_control_segment(const struct tcp_pcb *pcb, struct pbuf *p,
 
   LWIP_ASSERT("tcp_output_control_segment: invalid pbuf", p != NULL);
   //driver2socks
-  netif = tcp_route(pcb, src, dst);
+  //netif = tcp_route(pcb, src, dst);
+  netif = netif_list;
 
   if (netif == NULL) {
     pbuf_free(p);

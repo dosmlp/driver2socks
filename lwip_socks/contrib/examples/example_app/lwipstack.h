@@ -15,6 +15,7 @@ extern "C"{
 #include <set>
 #include <memory>
 #include <thread>
+#include <chrono>
 #include <timeapi.h>
 
 #include "tun2socks.h"
@@ -23,6 +24,7 @@ extern "C"{
 #include  "netpacket_pool.h"
 
 namespace driver2socks {
+	using namespace std::chrono_literals;
 	struct TcpArg
 	{
 		std::shared_ptr<socks_client> sc_client;
@@ -167,7 +169,7 @@ namespace driver2socks {
 		inline void strand_tcp_write(struct tcp_pcb *pcb, std::shared_ptr<NetPacket> buff, u16_t len, u8_t apiflags, std::function<void(err_t)> cb) {
 			_strand->post([=]() {
 				err_t err = ERR_OK;
-				if (pcb->state == 0 || TCP_STATE_IS_CLOSING(pcb->state)) return;
+				if (pcb->state == 0 || TCP_STATE_IS_CLOSING(pcb->state) || pcb->callback_arg == nullptr) return;
 
 				
 				TcpArg* ta = (TcpArg*)(pcb->callback_arg);
@@ -179,7 +181,7 @@ namespace driver2socks {
 				while (!ta->queue_send.empty()) {
 					std::shared_ptr<NetPacket> np = *(ta->queue_send.front());
 					if (np->data_len > pcb->snd_buf) {
-						std::cout << "np->size > pcb->snd_buf\n";
+						std::this_thread::sleep_for(125ms);
 						break;
 					}
 					err = LWIPStack::lwip_tcp_write(pcb, np->data, np->data_len, apiflags);

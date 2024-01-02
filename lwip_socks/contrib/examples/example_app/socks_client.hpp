@@ -339,7 +339,8 @@ namespace driver2socks {
 
 			auto self = shared_from_this();
 			/*
-			m_socket.async_connect(asio::ip::tcp::endpoint(asio::ip::make_address_v4(proxy_address), proxy_port),[self,this,read](asio::error_code ec) {
+			m_socket.async_connect(asio::ip::tcp::endpoint(asio::ip::make_address(proxy_address), proxy_port),
+				[self,this,read](asio::error_code ec) {
 				if (ec) {
 					std::cout << "error connect to proxy\n";
 				} else {

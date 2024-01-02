@@ -11,3 +11,9 @@
 
 
 ![](https://raw.githubusercontent.com/dosmlp/driver2socks/main/d2s.png)
+
+### 待开发。。。
+
+- [ ] 拦截系统DNS查询，转为dot安全dns
+- [ ] 增加配置选项
+- [x] 支持ipv6

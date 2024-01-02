@@ -15,6 +15,7 @@ using size_t = std::size_t;
 
 struct DRIVER2SOCKSConfig {
 	typedef std::shared_ptr<DRIVER2SOCKSConfig> Ptr;
+	bool enable_ipv6;
 	std::string proxy_username;
 	std::string proxy_password;
 	std::string socks5_address;
@@ -22,6 +23,7 @@ struct DRIVER2SOCKSConfig {
 	uint32_t udp_timeout;
 	DRIVER2SOCKSConfig()
 	{
+		enable_ipv6 = false;
 		socks5_port = 0;
 		udp_timeout = 5000;
 	}

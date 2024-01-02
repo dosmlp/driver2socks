@@ -9,6 +9,7 @@
 #include "lwip/pbuf.h"
 #include  "lwip/ip.h"
 #include "ring_buf.hpp"
+#include "netpacket_pool.h"
 
 using cb_outbound_data = std::function<void(std::shared_ptr<void>,size_t)>;
 
@@ -38,7 +39,7 @@ public:
 		//thread_2_ = std::thread([this]() {this->_runInject(); });
 		//this->_run();
 	}
-	void doWrite(std::unique_ptr<uint8_t[]>&& buffer,size_t len)
+	void doWrite(std::shared_ptr<NetPacket> buffer,size_t len)
 	{
 #if 0
 		//std::cout << "inject_buf write size:" << len << "\n";
@@ -58,11 +59,11 @@ public:
 		addr.Impostor = 1;
 		addr.IPv6 = 0;
 
-		if (IP_HDR_GET_VERSION(buffer.get()) == 6) {
+		if (IP_HDR_GET_VERSION(buffer->data) == 6) {
 			addr.IPv6 = 1;
 		}
 
-		WinDivertSend(w_handle_, buffer.get(), len, NULL, &addr);
+		WinDivertSend(w_handle_, buffer->data, len, NULL, &addr);
 #endif
 
 	}

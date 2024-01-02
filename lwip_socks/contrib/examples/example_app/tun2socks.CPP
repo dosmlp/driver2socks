@@ -20,6 +20,7 @@
 #include "WindivertDriver.h"
 #include "iocontext.h"
 #include "socks_client.hpp"
+#include  "netpacket_pool.h"
 extern "C"{
 #include "lwip/priv/tcp_priv.h"
 }
@@ -424,21 +425,27 @@ void tun2socks_start(const DRIVER2SOCKSConfig* config) {
 
     //tcp数据注入到驱动入站方向
     LWIPStack::getInstance().set_output_function([driver](struct netif *netif, struct pbuf *p, const ip4_addr_t *ipaddr)->err_t {
-        auto buffer = std::make_unique<u_char[]>(p->tot_len);
-        pbuf_copy_partial(p, buffer.get(), p->tot_len, 0);
+        std::shared_ptr<NetPacket> buffer(_NetPacketPool->getPacket(), [](NetPacket* p) {_NetPacketPool->freePacket(p); });
+        pbuf_copy_partial(p, buffer->data, p->tot_len, 0);
+        buffer->data_len = p->tot_len;
         uint16_t len = p->tot_len;
         //driver->doWrite((uint8_t*)&len, sizeof(uint16_t));
-        driver->doWrite(std::move(buffer), p->tot_len);
+        driver->doWrite(buffer, p->tot_len);
         return ERR_OK;
     });
-    LWIPStack::getInstance().set_outputv6_function([driver](struct netif* netif, struct pbuf* p, const ip6_addr_t* ipaddr)->err_t {
-        auto buffer = std::make_unique<u_char[]>(p->tot_len);
-        pbuf_copy_partial(p, buffer.get(), p->tot_len, 0);
-        uint16_t len = p->tot_len;
-        //driver->doWrite((uint8_t*)&len, sizeof(uint16_t));
-        driver->doWrite(std::move(buffer), p->tot_len);
-        return ERR_OK;
-        });
+    if (config->enable_ipv6) {
+        LWIPStack::getInstance().set_outputv6_function([driver](struct netif* netif, struct pbuf* p, const ip6_addr_t* ipaddr)->err_t {
+            std::shared_ptr<NetPacket> buffer(_NetPacketPool->getPacket(), [](NetPacket* p) {_NetPacketPool->freePacket(p); });
+            pbuf_copy_partial(p, buffer->data, p->tot_len, 0);
+            buffer->data_len = p->tot_len;
+            uint16_t len = p->tot_len;
+            //driver->doWrite((uint8_t*)&len, sizeof(uint16_t));
+            driver->doWrite(buffer, p->tot_len);
+            return ERR_OK;
+            });
+    }
+
+        
     //从驱动中读取数据
     driver->run([](std::shared_ptr<void> bf,size_t size) {
         LWIPStack::getInstance().strand_ip_input(bf,size, [](err_t err){
