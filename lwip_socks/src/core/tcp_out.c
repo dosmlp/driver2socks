@@ -77,7 +77,7 @@
 #if LWIP_TCP_TIMESTAMPS
 #include "lwip/sys.h"
 #endif
-#include "arch/sys_arch.h"
+#include "sys_arch.h"
 
 #include <string.h>
 

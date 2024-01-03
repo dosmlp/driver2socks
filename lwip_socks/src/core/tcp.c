@@ -111,7 +111,7 @@
 #include "lwip/ip6.h"
 #include "lwip/ip6_addr.h"
 #include "lwip/nd6.h"
-#include "arch/sys_arch.h"
+#include "sys_arch.h"
 
 #include <string.h>
 

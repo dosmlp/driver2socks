@@ -1,38 +1,3 @@
-# This file is indended to be included in end-user CMakeLists.txt
-# include(/path/to/Filelists.cmake)
-# It assumes the variable LWIP_DIR is defined pointing to the
-# root path of lwIP sources.
-#
-# This file is NOT designed (on purpose) to be used as cmake
-# subdir via add_subdirectory()
-# The intention is to provide greater flexibility to users to
-# create their own targets using the *_SRCS variables.
-
-if(NOT ${CMAKE_VERSION} VERSION_LESS "3.10.0")
-    include_guard(GLOBAL)
-endif()
-
-set(LWIP_VERSION_MAJOR    "2")
-set(LWIP_VERSION_MINOR    "2")
-set(LWIP_VERSION_REVISION "0")
-# LWIP_VERSION_RC is set to LWIP_RC_RELEASE for official releases
-# LWIP_VERSION_RC is set to LWIP_RC_DEVELOPMENT for Git versions
-# Numbers 1..31 are reserved for release candidates
-set(LWIP_VERSION_RC       "LWIP_RC_RELEASE")
-
-if ("${LWIP_VERSION_RC}" STREQUAL "LWIP_RC_RELEASE")
-    set(LWIP_VERSION_STRING
-        "${LWIP_VERSION_MAJOR}.${LWIP_VERSION_MINOR}.${LWIP_VERSION_REVISION}"
-    )
-elseif ("${LWIP_VERSION_RC}" STREQUAL "LWIP_RC_DEVELOPMENT")
-    set(LWIP_VERSION_STRING
-        "${LWIP_VERSION_MAJOR}.${LWIP_VERSION_MINOR}.${LWIP_VERSION_REVISION}.dev"
-    )
-else()
-    set(LWIP_VERSION_STRING
-        "${LWIP_VERSION_MAJOR}.${LWIP_VERSION_MINOR}.${LWIP_VERSION_REVISION}.rc${LWIP_VERSION_RC}"
-    )
-endif()
 
 # The minimum set of files needed for lwIP.
 set(lwipcore_SRCS
@@ -200,13 +165,7 @@ set(lwipnoapps_SRCS
 )
 
 
-# Generate lwip/init.h (version info)
-configure_file(${LWIP_DIR}/src/include/lwip/init.h.cmake.in ${LWIP_DIR}/src/include/lwip/init.h)
 
 
-# lwIP libraries
-add_library(lwipcore EXCLUDE_FROM_ALL ${lwipnoapps_SRCS})
-target_compile_options(lwipcore PRIVATE ${LWIP_COMPILER_FLAGS})
-target_compile_definitions(lwipcore PRIVATE ${LWIP_DEFINITIONS}  ${LWIP_MBEDTLS_DEFINITIONS})
-target_include_directories(lwipcore PRIVATE ${LWIP_INCLUDE_DIRS} ${LWIP_MBEDTLS_INCLUDE_DIRS})
+
 
