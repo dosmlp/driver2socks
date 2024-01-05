@@ -148,7 +148,7 @@ namespace driver2socks {
             return err;
 		}
 
-		inline void init(asio::io_context& ctx, const DRIVER2SOCKSConfig* config) {
+		inline void init(asio::io_context& ctx) {
 			lwip_init();
 			_strand = new asio::io_context::strand(ctx);
             netif_default = netif_list;

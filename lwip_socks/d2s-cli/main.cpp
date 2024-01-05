@@ -2,8 +2,12 @@
 #include "lwipstack.h"
 #include "tun2socks.h"
 #include "DbgHelp.h"
+#include "nlohmann/json.hpp"
 #include <filesystem>
 #include <Windows.h>
+#include <fstream>
+#include "app_config.h"
+using namespace nlohmann;
 
 #pragma comment(lib, "dbghelp.lib")
 
@@ -27,9 +31,13 @@ int main(int argc, char* argv)
 {
 	SetUnhandledExceptionFilter(unhandledExceptionFilterEx);
 
-	DRIVER2SOCKSConfig cfg;
-	cfg.socks5_address = "127.0.0.1";
-	cfg.socks5_port = 7890;
+    std::ifstream config_file("cfg.json",std::ios::in,std::ios::binary);
+
+    json doc = json::parse(config_file,nullptr,false);
+
+	driver2socks::Driver2SocksConfig cfg;
+	cfg.socks5_server_ip = "127.0.0.1";
+	cfg.socks5_server_port = 7890;
 	tun2socks_start(&cfg);
 	std::cout << "__________________________________________\n";
 	return 0;

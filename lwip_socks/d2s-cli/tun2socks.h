@@ -13,4 +13,4 @@
 using size_t = std::size_t;
 
 
-void tun2socks_start(const DRIVER2SOCKSConfig*);
+void tun2socks_start(const driver2socks::Driver2SocksConfig* cfg);

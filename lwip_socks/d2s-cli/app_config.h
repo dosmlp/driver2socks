@@ -22,7 +22,7 @@ namespace driver2socks {
     struct Driver2SocksConfig {
         bool enable_ipv6;
         std::string socks5_server_ip;
-        int64_t socks5_server_port;
+        uint16_t socks5_server_port;
         std::vector<std::string> app_names;
     };
 }
@@ -34,7 +34,7 @@ namespace driver2socks {
     inline void from_json(const json & j, Driver2SocksConfig& x) {
         x.enable_ipv6 = j.at("enable_ipv6").get<bool>();
         x.socks5_server_ip = j.at("socks5server_ip").get<std::string>();
-        x.socks5_server_port = j.at("socks5server_port").get<int64_t>();
+        x.socks5_server_port = j.at("socks5server_port").get<uint16_t>();
         x.app_names = j.at("app_names").get<std::vector<std::string>>();
     }
 

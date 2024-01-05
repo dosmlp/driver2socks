@@ -49,7 +49,7 @@ using namespace driver2socks;
 
 static HANDLE g_tap_handle = INVALID_HANDLE_VALUE;
 static bool to_read = true;
-static const DRIVER2SOCKSConfig* g_config;
+static const Driver2SocksConfig* g_config;
 static std::atomic<int> g_addr2seeds;
 static std::mutex g_syncdns_metex;
 static std::unordered_map<u32_t, std::string> g_addr2host;
@@ -198,7 +198,7 @@ err_t tcp_on_accept(void *arg, struct tcp_pcb *newpcb, err_t err) {
         WinDivertHelperFormatIPv6Address(ip, hoststr, 64);
     }
     //开始socks5客户端（建立到服务器的连接并握手）
-    context->start_socks(g_config->socks5_address, g_config->socks5_port, 
+    context->start_socks(g_config->socks5_server_ip, g_config->socks5_server_port, 
         std::string(hoststr), newpcb->local_port, 
         callback_socksclient_recv,
         [](asio::error_code ec) {});
@@ -396,11 +396,11 @@ static void tun2socks_dns_listen() {
     }
 }
 
-void tun2socks_start(const DRIVER2SOCKSConfig* config) {
+void tun2socks_start(const driver2socks::Driver2SocksConfig* config) {
 
     g_config = config;
     auto driver = std::make_shared<WindivertDriver>();
-    LWIPStack::getInstance().init(IoContext::getIoContext() , config);
+    LWIPStack::getInstance().init(IoContext::getIoContext());
     auto t_pcb = LWIPStack::tcp_listen_any();
     auto u_pcb = LWIPStack::udp_listen_any();
 

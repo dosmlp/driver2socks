@@ -1,4 +1,3 @@
-
 # The minimum set of files needed for lwIP.
 set(lwipcore_SRCS
     ${LWIP_DIR}/src/core/init.c
