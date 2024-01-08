@@ -24,6 +24,11 @@ namespace driver2socks {
         std::string socks5_server_ip;
         uint16_t socks5_server_port;
         std::vector<std::string> app_names;
+        Driver2SocksConfig():
+            enable_ipv6(false),
+            socks5_server_ip("127.0.0.1"),
+            socks5_server_port(7890)
+        {}
     };
 }
 

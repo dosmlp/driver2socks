@@ -1,6 +1,6 @@
-#include "WindivertDriver.h"
+#include "windivert_driver.h"
 #include "lwipstack.h"
-#include "tun2socks.h"
+#include "driver2socks.h"
 #include "DbgHelp.h"
 #include "nlohmann/json.hpp"
 #include <filesystem>
@@ -32,13 +32,15 @@ int main(int argc, char* argv)
 	SetUnhandledExceptionFilter(unhandledExceptionFilterEx);
 
     std::ifstream config_file("cfg.json",std::ios::in,std::ios::binary);
+    driver2socks::Driver2SocksConfig cfg;
 
     json doc = json::parse(config_file,nullptr,false);
+    if (doc.is_discarded()) {
+        std::cerr << "json parse error\n";
+        return -1;
+    }
 
-	driver2socks::Driver2SocksConfig cfg;
-	cfg.socks5_server_ip = "127.0.0.1";
-	cfg.socks5_server_port = 7890;
-	tun2socks_start(&cfg);
-	std::cout << "__________________________________________\n";
+    driver2socks::from_json(doc,cfg);
+    driver2socks_start(&cfg);
 	return 0;
 }

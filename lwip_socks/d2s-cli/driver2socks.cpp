@@ -1,4 +1,4 @@
-#include "tun2socks.h"
+#include "driver2socks.h"
 
 #include <array>
 #include <cctype>
@@ -16,7 +16,7 @@
 #include <windivert.h>
 #include "asio.hpp"
 #include "lwipstack.h"
-#include "WindivertDriver.h"
+#include "windivert_driver.h"
 #include "iocontext.h"
 #include "socks_client.hpp"
 #include  "netpacket_pool.h"
@@ -55,7 +55,7 @@ static std::mutex g_syncdns_metex;
 static std::unordered_map<u32_t, std::string> g_addr2host;
 static std::unordered_map<std::string, u32_t> g_host2addr;
 
-u32_t tun2socks_dns_alloc(const std::string& hostname) {
+u32_t driver2socks_dns_alloc(const std::string& hostname) {
     g_syncdns_metex.lock();
 
     u32_t address = 0;
@@ -82,7 +82,7 @@ RETN_0:
     return address;
 }
 
-bool tun2socks_dns_resolve(u32_t address, std::string& hostname) {
+bool driver2socks_dns_resolve(u32_t address, std::string& hostname) {
     hostname = "";
 
     g_syncdns_metex.lock();
@@ -206,7 +206,7 @@ err_t tcp_on_accept(void *arg, struct tcp_pcb *newpcb, err_t err) {
     return ERR_OK;
 }
 
-int tun2socks_dns_fill_hostname(const char* hostname, unsigned int hostname_len, char*& payload) {
+int driver2socks_dns_fill_hostname(const char* hostname, unsigned int hostname_len, char*& payload) {
     char* current_payload_pos = payload;
     {
         char domain[MAX_PATH] = "";
@@ -232,7 +232,7 @@ int tun2socks_dns_fill_hostname(const char* hostname, unsigned int hostname_len,
     return (int)(payload - current_payload_pos);
 }
 
-static void tun2socks_dns_listen() {
+static void driver2socks_dns_listen() {
     auto fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
     struct sockaddr_in bindaddr;
@@ -334,7 +334,7 @@ static void tun2socks_dns_listen() {
             response->usQuestionCount = htons(1);
 
             payload += sizeof(DNSHeader);
-            tun2socks_dns_fill_hostname(hostname.data(), hostname.length(), payload);
+            driver2socks_dns_fill_hostname(hostname.data(), hostname.length(), payload);
 
             *(u16_t*)payload = ntohs(usQType);
             payload += sizeof(u16_t);
@@ -343,7 +343,7 @@ static void tun2socks_dns_listen() {
 
             if (usQClass & 1) {
 #pragma pack(push, 1)
-                tun2socks_dns_fill_hostname(hostname.data(), hostname.length(), payload);
+                driver2socks_dns_fill_hostname(hostname.data(), hostname.length(), payload);
 
                 struct Answer
                 {
@@ -369,7 +369,7 @@ static void tun2socks_dns_listen() {
 
                     AnswerAddress* rrA = (AnswerAddress*)answer;
                     answer->usRDLength = ntohs(4);
-                    rrA->dwAddress = ntohl(tun2socks_dns_alloc(hostname));
+                    rrA->dwAddress = ntohl(driver2socks_dns_alloc(hostname));
 
                     payload += sizeof(AnswerAddress);
                     response->usAnswerCount = ntohs(1);
@@ -381,7 +381,7 @@ static void tun2socks_dns_listen() {
 
                     payload += sizeof(Answer);
 
-                    int resouces_data_length = tun2socks_dns_fill_hostname(hostname.data(), hostname.length(), payload);
+                    int resouces_data_length = driver2socks_dns_fill_hostname(hostname.data(), hostname.length(), payload);
                     answer->usRDLength = ntohs(resouces_data_length);
 
                     response->usAnswerCount = ntohs(1);
@@ -396,10 +396,10 @@ static void tun2socks_dns_listen() {
     }
 }
 
-void tun2socks_start(const driver2socks::Driver2SocksConfig* config) {
+void driver2socks_start(const driver2socks::Driver2SocksConfig* config) {
 
     g_config = config;
-    auto driver = std::make_shared<WindivertDriver>();
+    WindivertDriver::Ptr driver(new WindivertDriver(config->app_names));
     LWIPStack::getInstance().init(IoContext::getIoContext());
     auto t_pcb = LWIPStack::tcp_listen_any();
     auto u_pcb = LWIPStack::udp_listen_any();
@@ -441,6 +441,6 @@ void tun2socks_start(const driver2socks::Driver2SocksConfig* config) {
     });
 
     system("pause");
-    //std::thread(tun2socks_dns_listen).detach();
+    //std::thread(driver2socks_dns_listen).detach();
 
 }

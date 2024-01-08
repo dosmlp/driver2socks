@@ -18,7 +18,7 @@ extern "C"{
 #include <chrono>
 #include <timeapi.h>
 
-#include "tun2socks.h"
+#include "driver2socks.h"
 #include "sys_arch.h"
 #include "spsc_queue.h"
 #include "netpacket_pool.h"

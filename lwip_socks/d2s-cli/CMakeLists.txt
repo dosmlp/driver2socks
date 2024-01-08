@@ -14,12 +14,14 @@ add_executable(d2s-cli
     lwipstack.h
     iocontext.h
     iocontext.cpp
-    tun2socks.h
-    tun2socks.cpp
-    WindivertDriver.h
+    driver2socks.h
+    driver2socks.cpp
     asio_coro_util.hpp
     lwip/sys_arch.h
     lwip/sys_arch.cpp
+    app_config.h
+    windivert_driver.h
+    windivert_driver.cpp
 )
 
 

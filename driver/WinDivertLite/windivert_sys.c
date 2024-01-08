@@ -2968,7 +2968,7 @@ windivert_ioctl_bad_flags:
             layer = context->layer;
             process = context->process;
             KeReleaseInStackQueuedSpinLock(&lock_handle);
-
+            //driver2socks
             ioctl_filter = (const WINDIVERT_FILTER *)outbuf;
             ioctl_filter_len = outbuflen;
             filter = windivert_filter_compile(ioctl_filter, ioctl_filter_len,
