@@ -293,6 +293,8 @@ static void WinDivertSerializeLabel(PWINDIVERT_STREAM stream, UINT16 label)
 /*
  * Serialize a test.
  */
+//driver2socks
+#if 0
 static void WinDivertSerializeTest(PWINDIVERT_STREAM stream,
     const WINDIVERT_FILTER *filter)
 {
@@ -339,10 +341,12 @@ static void WinDivertSerializeTest(PWINDIVERT_STREAM stream,
     WinDivertSerializeLabel(stream, (UINT16)filter->success);
     WinDivertSerializeLabel(stream, (UINT16)filter->failure);
 }
-
+#endif
 /*
  * Serialize a test.
  */
+//driver2socks
+#if 0
 static void WinDivertSerializeFilter(PWINDIVERT_STREAM stream,
     const WINDIVERT_FILTER *filter, UINT8 length)
 {
@@ -356,6 +360,7 @@ static void WinDivertSerializeFilter(PWINDIVERT_STREAM stream,
     }
     WinDivertPutNul(stream);
 }
+#endif
 
 /*
  * Parse IPv4/IPv6/ICMP/ICMPv6/TCP/UDP headers from a raw packet.
@@ -962,6 +967,8 @@ static int WinDivertCompare128(BOOL neg_a, const UINT32 *a, BOOL neg_b,
 /*
  * WinDivert filter execute function.
  */
+//driver2socks
+#if 0
 static WINDIVERT_INLINE int WinDivertExecuteFilter(
     const WINDIVERT_FILTER *filter,
     WINDIVERT_LAYER layer,
@@ -1735,4 +1742,4 @@ static WINDIVERT_INLINE int WinDivertExecuteFilter(
 
     return -1;
 }
-
+#endif

@@ -17,9 +17,6 @@ EXPORTS
     WinDivertHelperParseIPv6Address
     WinDivertHelperFormatIPv4Address
     WinDivertHelperFormatIPv6Address
-    WinDivertHelperCompileFilter
-    WinDivertHelperEvalFilter
-    WinDivertHelperFormatFilter
     WinDivertHelperNtohs
     WinDivertHelperHtons
     WinDivertHelperNtohl

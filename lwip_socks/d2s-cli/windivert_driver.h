@@ -2,6 +2,7 @@
 #include <windivert.h>
 #include <iostream>
 #include <thread>
+#include <string>
 #include <functional>
 #include <atomic>
 #include <winsock2.h>

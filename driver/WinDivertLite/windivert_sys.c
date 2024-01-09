@@ -446,9 +446,9 @@ static BOOL windivert_filter(PNET_BUFFER buffer, WINDIVERT_LAYER layer,
     const VOID *layer_data, LONGLONG timestamp, WINDIVERT_EVENT event,
     BOOL ipv4, BOOL outbound, BOOL loopback, BOOL impostor, BOOL frag_mode,
     const WINDIVERT_FILTER *filter);
-static const WINDIVERT_FILTER *windivert_filter_compile(
-    const WINDIVERT_FILTER *ioctl_filter, size_t ioctl_filter_len,
-    WINDIVERT_LAYER layer);
+//static const WINDIVERT_FILTER *windivert_filter_compile(
+//    const WINDIVERT_FILTER *ioctl_filter, size_t ioctl_filter_len,
+//    WINDIVERT_LAYER layer);
 static NTSTATUS windivert_reflect_init(WDFOBJECT parent);
 static void windivert_reflect_close(void);
 static void windivert_reflect_open_event(context_t context);
@@ -2755,7 +2755,7 @@ extern VOID windivert_ioctl(IN WDFQUEUE queue, IN WDFREQUEST request,
     PCHAR inbuf, outbuf;
     size_t inbuflen, outbuflen, ioctl_filter_len;
     PWINDIVERT_IOCTL ioctl;
-    const WINDIVERT_FILTER *ioctl_filter, *filter;
+    const WINDIVERT_FILTER* filter;
     req_context_t req_context;
     NTSTATUS status = STATUS_SUCCESS;
     context_t context =
@@ -2969,17 +2969,16 @@ windivert_ioctl_bad_flags:
             process = context->process;
             KeReleaseInStackQueuedSpinLock(&lock_handle);
             //driver2socks
-            ioctl_filter = (const WINDIVERT_FILTER *)outbuf;
-            ioctl_filter_len = outbuflen;
-            filter = windivert_filter_compile(ioctl_filter, ioctl_filter_len,
-                layer);
+            filter = windivert_malloc(outbuflen, FALSE);
             if (filter == NULL)
             {
                 status = STATUS_INVALID_PARAMETER;
-                DEBUG_ERROR("failed to compile filter", status);
+                DEBUG_ERROR("failed to malloc filter", status);
                 goto windivert_ioctl_exit;
             }
-            filter_len = (UINT8)(ioctl_filter_len / sizeof(WINDIVERT_FILTER));
+            RtlZeroMemory(filter, outbuflen);
+            RtlCopyMemory(filter, outbuf, outbuflen);
+            filter_len = outbuflen;
             process_id = (UINT32)(ULONG_PTR)PsGetProcessId(process);
             timestamp = KeQueryPerformanceCounter(NULL).QuadPart;
 
@@ -3627,12 +3626,9 @@ static void windivert_flow_delete_notify(UINT16 layer_id, UINT32 callout_id,
     UINT64 flow_context)
 {
     KLOCK_QUEUE_HANDLE lock_handle;
-    UINT64 flags;
     BOOL match, cleanup;
     WDFOBJECT object;
     context_t context;
-    const WINDIVERT_FILTER *filter;
-    LONGLONG timestamp;
     flow_t flow;
 
     UNREFERENCED_PARAMETER(layer_id);
@@ -3643,7 +3639,6 @@ static void windivert_flow_delete_notify(UINT16 layer_id, UINT32 callout_id,
     {
         return;
     }
-    timestamp = KeQueryPerformanceCounter(NULL).QuadPart;
     context = flow->context;
 
     KeAcquireInStackQueuedSpinLock(&context->lock, &lock_handle);
@@ -3660,8 +3655,7 @@ static void windivert_flow_delete_notify(UINT16 layer_id, UINT32 callout_id,
         KeReleaseInStackQueuedSpinLock(&lock_handle);
         goto windivert_flow_delete_notify_exit;
     }
-    filter = context->filter;
-    flags = context->flags;
+
     KeReleaseInStackQueuedSpinLock(&lock_handle);
 	
     mln_rbtree_node_t* node = mln_rbtree_search(context->rbtree_blockip, &flow->data);
@@ -5020,7 +5014,7 @@ static BOOL windivert_filter(PNET_BUFFER buffer, WINDIVERT_LAYER layer,
     PWINDIVERT_DATA_FLOW flow_data = NULL;
     PWINDIVERT_DATA_SOCKET socket_data = NULL;
     PWINDIVERT_DATA_REFLECT reflect_data = NULL;
-    int result;
+    int result = 0;
 
     switch (layer)
     {
@@ -5074,7 +5068,8 @@ static BOOL windivert_filter(PNET_BUFFER buffer, WINDIVERT_LAYER layer,
             DEBUG("FILTER: REJECT (invalid parameter)");
             return FALSE;
     }
-
+    //driver2socks
+#if 0
     result = WinDivertExecuteFilter(
         filter,
         layer,
@@ -5100,13 +5095,14 @@ static BOOL windivert_filter(PNET_BUFFER buffer, WINDIVERT_LAYER layer,
         header_len + payload_len,
         header_len,
         payload_len);
-
+#endif
     return (result == 1);
 }
 
 /*
  * Compile a WinDivert filter from an IOCTL.
- */
+*/
+#if 0
 static const WINDIVERT_FILTER *windivert_filter_compile(
     const WINDIVERT_FILTER *ioctl_filter, size_t ioctl_filter_len,
     WINDIVERT_LAYER layer)
@@ -5397,7 +5393,7 @@ windivert_filter_compile_error:
     windivert_free((PVOID)filter);
     return NULL;
 }
-
+#endif
 /****************************************************************************/
 /* WINDIVERT REFLECT MANAGER IMPLEMENTATION                                 */
 /****************************************************************************/
@@ -5539,8 +5535,8 @@ static PVOID windivert_reflect_packet(context_t context, ULONG *len_ptr)
     filter = context->filter;
     filter_len = context->filter_len;
     KeReleaseInStackQueuedSpinLock(&lock_handle);
-    
-    WinDivertSerializeFilter(&stream, filter, (UINT8)filter_len);
+    //driver2socks
+    //WinDivertSerializeFilter(&stream, filter, (UINT8)filter_len);
     *len_ptr = stream.pos;
     return (PVOID)stream.data;
 }

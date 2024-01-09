@@ -255,12 +255,14 @@ typedef UINT64 ERROR, *PERROR;
 static UINT32 WinDivertKindToField(KIND kind);
 static PEXPR WinDivertParseFilter(HANDLE pool, TOKEN *toks, UINT *i,
     INT depth, BOOL and, PERROR error);
-static BOOL WinDivertCondExecFilter(PWINDIVERT_FILTER filter, UINT length,
-    UINT8 field, UINT32 arg);
+//driver2socks
+//static BOOL WinDivertCondExecFilter(PWINDIVERT_FILTER filter, UINT length,
+//    UINT8 field, UINT32 arg);
 static int WinDivertCompare128(BOOL neg_a, const UINT32 *a, BOOL neg_b,
     const UINT32 *b, BOOL big);
-static BOOL WinDivertDeserializeFilter(PWINDIVERT_STREAM stream,
-    PWINDIVERT_FILTER filter, UINT *length);
+//driver2socks
+//static BOOL WinDivertDeserializeFilter(PWINDIVERT_STREAM stream,
+//    PWINDIVERT_FILTER filter, UINT *length);
 static void WinDivertFormatExpr(PWINDIVERT_STREAM stream, PEXPR expr,
     WINDIVERT_LAYER layer, BOOL top_level, BOOL and);
 
@@ -2014,6 +2016,8 @@ static UINT32 WinDivertKindToField(KIND kind)
 /*
  * Emit a test.
  */
+//driver2socks
+#if 0
 static void WinDivertEmitTest(PEXPR test, UINT16 offset,
     PWINDIVERT_FILTER object)
 {
@@ -2085,10 +2089,13 @@ static void WinDivertEmitTest(PEXPR test, UINT16 offset,
     }
     return;
 }
+#endif
 
 /*
  * Emit a filter object.
  */
+//driver2socks
+#if 0
 static void WinDivertEmitFilter(PEXPR *stack, UINT len, UINT16 label,
     PWINDIVERT_FILTER object, UINT *obj_len)
 {
@@ -2117,6 +2124,8 @@ static void WinDivertEmitFilter(PEXPR *stack, UINT len, UINT16 label,
         WinDivertEmitTest(stack[len - i], label, object + i);
     }
 }
+#endif
+
 
 /*
  * Analyze a filter object.
@@ -2220,6 +2229,8 @@ static UINT64 WinDivertAnalyzeFilter(WINDIVERT_LAYER layer,
  * Execute a filter object with respect to an assumption/condition.
  * FALSE = definite reject; TRUE = maybe accept.
  */
+//driver2socks
+#if 0
 static BOOL WinDivertCondExecFilter(PWINDIVERT_FILTER filter, UINT length,
     UINT8 field, UINT32 arg)
 {
@@ -2315,10 +2326,14 @@ static BOOL WinDivertCondExecFilter(PWINDIVERT_FILTER filter, UINT length,
 
     return result[0];
 }
+#endif
+
 
 /*
  * Compile a filter string into an executable filter object.
  */
+//driver2socks
+#if 0
 static ERROR WinDivertCompileFilter(const char *filter, HANDLE pool,
     WINDIVERT_LAYER layer, PWINDIVERT_FILTER object, UINT *obj_len)
 {
@@ -2388,11 +2403,13 @@ static ERROR WinDivertCompileFilter(const char *filter, HANDLE pool,
     // Emit the final object.
     if (object != NULL)
     {
-        WinDivertEmitFilter(stack, label, label, object, obj_len);
+        //driver2socks
+        //WinDivertEmitFilter(stack, label, label, object, obj_len);
     }
 
     return MAKE_ERROR(WINDIVERT_ERROR_NONE, 0);
 }
+#endif
 
 /*
  * Convert a error code into a user readable string.
@@ -2431,6 +2448,8 @@ static const char *WinDivertErrorString(UINT code)
 /*
  * Compile the given filter string.
  */
+//driver2socks
+#if 0
 BOOL WinDivertHelperCompileFilter(const char *filter_str, WINDIVERT_LAYER layer,
     char *object, UINT obj_len, const char **error, UINT *error_pos)
 {
@@ -2494,6 +2513,8 @@ BOOL WinDivertHelperCompileFilter(const char *filter_str, WINDIVERT_LAYER layer,
     }
     return !IS_ERROR(err);
 }
+#endif
+
 
 /*
  * Get packet/payload data.
@@ -2514,6 +2535,8 @@ static BOOL WinDivertGetData(const VOID *packet, UINT packet_len, INT min,
 /*
  * Evaluate the given filter with the given packet as input.
  */
+//driver2socks
+#if 0
 BOOL WinDivertHelperEvalFilter(const char *filter, const VOID *packet,
     UINT packet_len, const WINDIVERT_ADDRESS *addr)
 {
@@ -2675,6 +2698,8 @@ WinDivertHelperEvalFilterError:
     SetLastError(error);
     return FALSE;
 }
+#endif
+
 
 /*
  * Get a char from a stream.
@@ -2800,6 +2825,8 @@ static BOOL WinDivertDeserializeLabel(PWINDIVERT_STREAM stream, UINT16 *label)
 /*
  * Deserialize a test.
  */
+//driver2socks
+#if 0
 static BOOL WinDivertDeserializeTest(PWINDIVERT_STREAM stream,
     PWINDIVERT_FILTER filter)
 {
@@ -2895,10 +2922,12 @@ static BOOL WinDivertDeserializeTest(PWINDIVERT_STREAM stream,
     filter->failure = failure;
     return TRUE;
 }
-
+#endif
 /*
  * Deserialize a filter header.
  */
+//driver2socks
+#if 0
 static BOOL WinDivertDeserializeFilterHeader(PWINDIVERT_STREAM stream,
     UINT *length)
 {
@@ -2930,10 +2959,13 @@ static BOOL WinDivertDeserializeFilterHeader(PWINDIVERT_STREAM stream,
 
     return TRUE;
 }
+#endif
 
 /*
  * Deserialize a filter.
  */
+//driver2socks
+#if 0
 static BOOL WinDivertDeserializeFilter(PWINDIVERT_STREAM stream,
     PWINDIVERT_FILTER filter, UINT *length)
 {
@@ -2981,10 +3013,13 @@ static BOOL WinDivertDeserializeFilter(PWINDIVERT_STREAM stream,
 
     return TRUE;
 }
+#endif
 
 /*
  * Decompile a test into an expression.
  */
+//driver2socks
+#if 0
 static PEXPR WinDivertDecompileTest(HANDLE pool, PWINDIVERT_FILTER test)
 {
     KIND kind;
@@ -3239,6 +3274,8 @@ static PEXPR WinDivertDecompileTest(HANDLE pool, PWINDIVERT_FILTER test)
     expr->fail = test->failure;
     return expr;
 }
+#endif
+
 
 /*
  * Dereference an expression.
@@ -4137,6 +4174,8 @@ static void WinDivertFormatExpr(PWINDIVERT_STREAM stream, PEXPR expr,
 /*
  * Format a filter string.
  */
+//driver2socks
+#if 0
 BOOL WinDivertHelperFormatFilter(const char *filter, WINDIVERT_LAYER layer,
     char *buffer, UINT buflen)
 {
@@ -4247,6 +4286,7 @@ WinDivertHelperFormatFilterError:
     SetLastError(error);
     return FALSE;
 }
+#endif
 
 /*
  * WinDivert packet hash function.

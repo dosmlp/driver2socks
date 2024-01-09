@@ -45,4 +45,4 @@ target_include_directories(d2s-cli PRIVATE
     # )
 # endif()
 target_link_libraries(d2s-cli PRIVATE lwipcore)
-target_link_libraries(d2s-cli PRIVATE "..\\..\\..\\driver\\x64\\Debug\\WinDivertLiteDll" Winmm)
+target_link_libraries(d2s-cli PRIVATE "D:\\3rd\\git_repo\\driver2socks\\driver\\x64\\Debug\\WinDivertLiteDll.lib" Winmm)

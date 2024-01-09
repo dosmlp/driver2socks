@@ -451,15 +451,16 @@ static BOOL WinDivertIoControl(HANDLE handle, DWORD code,
 /*
  * Open a WinDivert handle.
  */
-HANDLE WinDivertOpen(const char *filter, WINDIVERT_LAYER layer, INT16 priority,
+HANDLE WinDivertOpen(const char *app_names, WINDIVERT_LAYER layer, INT16 priority,
     UINT64 flags)
 {
+    UINT32 app_names_len = 0;
     WINDIVERT_FILTER *object;
     UINT obj_len;
     ERROR comp_err;
     DWORD err;
-    HANDLE handle, pool;
-    UINT64 filter_flags;
+    HANDLE handle/*, pool*/;
+    UINT64 filter_flags = 0;
     WINDIVERT_IOCTL ioctl;
     WINDIVERT_VERSION version;
 
@@ -503,7 +504,19 @@ HANDLE WinDivertOpen(const char *filter, WINDIVERT_LAYER layer, INT16 priority,
         return INVALID_HANDLE_VALUE;
     }
 
+    USHORT* fp = app_names;
+    UINT16 flag = 0;
+    for (;;) {
+	    if (*fp == 0) {
+            ++flag;
+	    } else {
+            --flag;
+	    }
+        ++app_names_len;
+        if (flag == 2) break;
+    }
     // Compile & analyze the filter:
+    /*
     pool = HeapCreate(HEAP_NO_SERIALIZE, WINDIVERT_MIN_POOL_SIZE,
         WINDIVERT_MAX_POOL_SIZE);
     if (pool == NULL)
@@ -527,7 +540,7 @@ HANDLE WinDivertOpen(const char *filter, WINDIVERT_LAYER layer, INT16 priority,
         return INVALID_HANDLE_VALUE;
     }
     filter_flags = WinDivertAnalyzeFilter(layer, object, obj_len);
-
+    */
     // Attempt to open the WinDivert device:
     handle = CreateFile(L"\\\\.\\" WINDIVERT_DEVICE_NAME,
         GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
@@ -537,7 +550,7 @@ HANDLE WinDivertOpen(const char *filter, WINDIVERT_LAYER layer, INT16 priority,
         err = GetLastError();
         if (err != ERROR_FILE_NOT_FOUND && err != ERROR_PATH_NOT_FOUND)
         {
-            HeapDestroy(pool);
+            //HeapDestroy(pool);
             SetLastError(err);
             return INVALID_HANDLE_VALUE;
         }
@@ -545,7 +558,7 @@ HANDLE WinDivertOpen(const char *filter, WINDIVERT_LAYER layer, INT16 priority,
         // Open failed because the device isn't installed; install it now.
         if ((flags & WINDIVERT_FLAG_NO_INSTALL) != 0)
         {
-            HeapDestroy(pool);
+            //HeapDestroy(pool);
             SetLastError(ERROR_SERVICE_DOES_NOT_EXIST);
             return INVALID_HANDLE_VALUE;
         }
@@ -554,7 +567,7 @@ HANDLE WinDivertOpen(const char *filter, WINDIVERT_LAYER layer, INT16 priority,
         {
             err = GetLastError();
             err = (err == 0? ERROR_OPEN_FAILED: err);
-            HeapDestroy(pool);
+            //HeapDestroy(pool);
             SetLastError(err);
             return INVALID_HANDLE_VALUE;
         }
@@ -565,7 +578,7 @@ HANDLE WinDivertOpen(const char *filter, WINDIVERT_LAYER layer, INT16 priority,
         if (handle == INVALID_HANDLE_VALUE)
         {
             err = GetLastError();
-            HeapDestroy(pool);
+            //HeapDestroy(pool);
             SetLastError(err);
             return INVALID_HANDLE_VALUE;
         }
@@ -586,7 +599,7 @@ HANDLE WinDivertOpen(const char *filter, WINDIVERT_LAYER layer, INT16 priority,
     {
         err = GetLastError();
         CloseHandle(handle);
-        HeapDestroy(pool);
+        //HeapDestroy(pool);
         SetLastError(err);
         return INVALID_HANDLE_VALUE;
     }
@@ -594,7 +607,7 @@ HANDLE WinDivertOpen(const char *filter, WINDIVERT_LAYER layer, INT16 priority,
         version.major < WINDIVERT_VERSION_MAJOR_MIN)
     {
         CloseHandle(handle);
-        HeapDestroy(pool);
+        //HeapDestroy(pool);
         SetLastError(ERROR_DRIVER_FAILED_PRIOR_UNLOAD);
         return INVALID_HANDLE_VALUE;
     }
@@ -603,15 +616,15 @@ HANDLE WinDivertOpen(const char *filter, WINDIVERT_LAYER layer, INT16 priority,
     memset(&ioctl, 0, sizeof(ioctl));
     ioctl.startup.flags = filter_flags;
     if (!WinDivertIoControl(handle, IOCTL_WINDIVERT_STARTUP, &ioctl,
-            object, obj_len * sizeof(WINDIVERT_FILTER), NULL))
+            app_names, app_names_len, NULL))
     {
         err = GetLastError();
         CloseHandle(handle);
-        HeapDestroy(pool);
+        //HeapDestroy(pool);
         SetLastError(err);
         return INVALID_HANDLE_VALUE;
     }
-    HeapDestroy(pool);
+    //HeapDestroy(pool);
 
     // Success!
     return handle;
