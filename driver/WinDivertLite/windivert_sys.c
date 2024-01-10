@@ -783,7 +783,12 @@ static const struct layer_s windivert_layer_flow_established_ipv6 =
 };
 #define WINDIVERT_LAYER_FLOW_ESTABLISHED_IPV6                               \
     (&windivert_layer_flow_established_ipv6)
-
+static int cmpstring_handler(const void* data1, const void* data2)
+{
+    WCHAR* s1 = data1;
+    WCHAR* s2 = data2;
+    return wcscmp(s1, s2);
+}
 static int cmp_handler(const void* data1, const void* data2)
 {
     WINDIVERT_DATA_SOCKET* s1 = (PWINDIVERT_DATA_SOCKET)data1;
@@ -2977,7 +2982,8 @@ windivert_ioctl_bad_flags:
                 goto windivert_ioctl_exit;
             }
             RtlZeroMemory(filter, sizeof(WINDIVERT_FILTER));
-            filter->name = (WCHAR*)windivert_malloc(outbuflen, FALSE);
+            filter->name = windivert_malloc(outbuflen, FALSE);
+            RtlZeroMemory(filter->name, outbuflen);
             RtlCopyMemory(filter->name, outbuf, outbuflen);
             filter_len = outbuflen;
             process_id = (UINT32)(ULONG_PTR)PsGetProcessId(process);
