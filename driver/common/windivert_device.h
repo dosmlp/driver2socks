@@ -289,7 +289,8 @@ typedef struct
  */
 typedef struct
 {
-    char* aaa;
+    WCHAR* name;
+    WCHAR* app_names[255];
     //UINT32 field:11;                // WINDIVERT_FILTER_FIELD_*
     //UINT32 test:5;                  // WINDIVERT_FILTER_TEST_*
     //UINT32 success:16;              // Success continuation.

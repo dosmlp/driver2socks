@@ -2755,7 +2755,7 @@ extern VOID windivert_ioctl(IN WDFQUEUE queue, IN WDFREQUEST request,
     PCHAR inbuf, outbuf;
     size_t inbuflen, outbuflen, ioctl_filter_len;
     PWINDIVERT_IOCTL ioctl;
-    const WINDIVERT_FILTER* filter;
+    WINDIVERT_FILTER* filter;
     req_context_t req_context;
     NTSTATUS status = STATUS_SUCCESS;
     context_t context =
@@ -2969,15 +2969,16 @@ windivert_ioctl_bad_flags:
             process = context->process;
             KeReleaseInStackQueuedSpinLock(&lock_handle);
             //driver2socks
-            filter = windivert_malloc(outbuflen, FALSE);
+            filter = windivert_malloc(sizeof(WINDIVERT_FILTER), FALSE);
             if (filter == NULL)
             {
                 status = STATUS_INVALID_PARAMETER;
                 DEBUG_ERROR("failed to malloc filter", status);
                 goto windivert_ioctl_exit;
             }
-            RtlZeroMemory(filter, outbuflen);
-            RtlCopyMemory(filter, outbuf, outbuflen);
+            RtlZeroMemory(filter, sizeof(WINDIVERT_FILTER));
+            filter->name = (WCHAR*)windivert_malloc(outbuflen, FALSE);
+            RtlCopyMemory(filter->name, outbuf, outbuflen);
             filter_len = outbuflen;
             process_id = (UINT32)(ULONG_PTR)PsGetProcessId(process);
             timestamp = KeQueryPerformanceCounter(NULL).QuadPart;
