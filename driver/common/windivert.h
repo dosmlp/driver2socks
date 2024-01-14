@@ -128,7 +128,7 @@ typedef struct
     UINT16 LocalPort;                   /* Local port. */
     UINT16 RemotePort;                  /* Remote port. */
     UINT8  Protocol;                    /* Protocol. */
-    WCHAR  ProcessName[16];
+    WCHAR  ProcessName[64];
 } WINDIVERT_DATA_SOCKET, *PWINDIVERT_DATA_SOCKET;
 
 /*

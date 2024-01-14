@@ -25,27 +25,9 @@
     <ClCompile Include="mln_rbtree.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="mln_hash.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="mln_prime_generator.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="mln_rbtree.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="mln_hash.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="mln_prime_generator.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="mln_types.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="mln_utils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

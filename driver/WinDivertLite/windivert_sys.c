@@ -168,7 +168,8 @@ struct context_s
     UINT16 filter_len;                          // Length of filter.
     UINT64 filter_flags;                        // Filter flags.
     struct reflect_context_s reflect;           // Reflection info.
-    mln_rbtree_t* rbtree_blockip;
+    mln_rbtree_t* rbtree_blockip;//éœ€è¦æ‹¦æˆªçš„æœ¬åœ°IPå’Œç«¯å£
+    mln_rbtree_t* rbtree_appnames;//éœ€è¦æ‹¦æˆªçš„åº”ç”¨åç§°
 };
 typedef struct context_s context_s;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(context_s, windivert_context_get);
@@ -837,8 +838,14 @@ static struct mln_rbtree_attr ip_rbtree_attr = {
     .cmp = cmp_handler,
     .data_free = ExFreePool,
 };
+static struct mln_rbtree_attr appnames_rbtree_attr = {
+    .pool = NULL,
+    .pool_alloc = NULL,
+    .pool_free = NULL,
+    .cmp = cmpstring_handler,
+    .data_free = ExFreePool,
+};
 
-//static mln_rbtree_t* rbtree_blockip = NULL;
 
 /*
  * Filter interpreter config.
@@ -1384,6 +1391,7 @@ extern VOID windivert_create(IN WDFDEVICE device, IN WDFREQUEST request,
     ObfReferenceObject(context->process);
 
     context->rbtree_blockip = mln_rbtree_new(&ip_rbtree_attr);
+    context->rbtree_appnames = mln_rbtree_new(&appnames_rbtree_attr);
 
 windivert_create_exit:
 
@@ -1857,6 +1865,11 @@ extern VOID windivert_destroy(IN WDFOBJECT object)
         mln_rbtree_reset(context->rbtree_blockip);
         mln_rbtree_free(context->rbtree_blockip);
     }
+    if (context->rbtree_appnames != NULL) {
+        mln_rbtree_reset(context->rbtree_appnames);
+        mln_rbtree_free(context->rbtree_appnames);
+    }
+
 }
 
 /*
@@ -2985,6 +2998,30 @@ windivert_ioctl_bad_flags:
             filter->name = windivert_malloc(outbuflen, FALSE);
             RtlZeroMemory(filter->name, outbuflen);
             RtlCopyMemory(filter->name, outbuf, outbuflen);
+
+            UINT16* onechar = filter->name;
+            UINT32 flag = 0;
+            for (UINT32 i = 0;;) {
+                if (*onechar == 0 && *(onechar + 1) == 0) {
+                    break;
+                }
+                if (*onechar != 0 && flag == 0) {
+                    flag = 1;
+                    filter->app_names[i] = onechar;
+                    ++i;
+                } else if (*onechar != 0 && flag == 1) {
+                    ++onechar;
+                } else if (*onechar == 0) {
+                    ++onechar;
+                    flag = 0;
+                }
+            }
+            for (UINT32 i = 0; filter->app_names[i] != NULL;++i) {
+                mln_rbtree_node_t* node = mln_rbtree_node_new(context->rbtree_appnames, filter->app_names[i]);
+                mln_rbtree_insert(context->rbtree_appnames, node);
+            }
+
+
             filter_len = outbuflen;
             process_id = (UINT32)(ULONG_PTR)PsGetProcessId(process);
             timestamp = KeQueryPerformanceCounter(NULL).QuadPart;
@@ -4190,11 +4227,13 @@ static void windivert_socket_classify(context_t context,
 
     
     if (event == WINDIVERT_EVENT_SOCKET_CONNECT) {
-        WCHAR* d = wcsstr(socket_data->ProcessName, L"msedg");
-        DEBUG("name:%S", socket_data->ProcessName);
-        if (d != NULL) {
+        mln_rbtree_node_t* result = mln_rbtree_search(context->rbtree_appnames, socket_data->ProcessName);
+        if (!mln_rbtree_null(result, context->rbtree_appnames)) {
+            DEBUG("name:%S", socket_data->ProcessName);
+
             WINDIVERT_DATA_SOCKET* s = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(WINDIVERT_DATA_SOCKET), "rbtree");
             RtlCopyMemory(s, socket_data, sizeof(WINDIVERT_DATA_SOCKET));
+
             mln_rbtree_node_t* node = mln_rbtree_node_new(context->rbtree_blockip, s);
             mln_rbtree_insert(context->rbtree_blockip, node);
             DEBUG("rbtree insert %u %u", s->LocalAddr[0], s->LocalPort);
@@ -4206,7 +4245,7 @@ static void windivert_socket_classify(context_t context,
     if (event == WINDIVERT_EVENT_SOCKET_CLOSE) {
         mln_rbtree_node_t* node = mln_rbtree_search(context->rbtree_blockip, socket_data);
         if (!mln_rbtree_null(node, context->rbtree_blockip)) {
-            //²»ÄÜÔÚµ÷ÓÃapi¹Ø±ÕÊ±¾ÍÉ¾µôip,·ñÔòÔÚ»ÓÊÖ½×¶Îclient¶ËµÄ»ÓÊÖ°üÎÞ·¨±»À¹½Ø
+            //ä¸èƒ½åœ¨è°ƒç”¨apiå…³é—­æ—¶å°±åˆ æŽ‰ip,å¦åˆ™åœ¨æŒ¥æ‰‹é˜¶æ®µclientç«¯çš„æŒ¥æ‰‹åŒ…æ— æ³•è¢«æ‹¦æˆª
             //mln_rbtree_delete(context->rbtree_blockip, node);
             //mln_rbtree_node_free(context->rbtree_blockip, node);
             //DEBUG("rbtree free %u %u", socket_data->LocalAddr[0], socket_data->LocalPort);

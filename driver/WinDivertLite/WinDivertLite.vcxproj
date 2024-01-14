@@ -125,17 +125,11 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="mln_hash.c" />
-    <ClCompile Include="mln_prime_generator.c" />
     <ClCompile Include="mln_rbtree.c" />
     <ClCompile Include="windivert_sys.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="mln_hash.h" />
-    <ClInclude Include="mln_prime_generator.h" />
     <ClInclude Include="mln_rbtree.h" />
-    <ClInclude Include="mln_types.h" />
-    <ClInclude Include="mln_utils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
