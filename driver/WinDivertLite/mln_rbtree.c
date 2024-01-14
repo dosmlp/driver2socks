@@ -63,10 +63,10 @@ void mln_rbtree_free(mln_rbtree_t *t)
     while ((fr = t->tail) != NULL) {
         mln_rbtree_chain_del(&(t->head), &(t->tail), fr);
             mln_u32_t nofree = (fr)->nofree; 
-            if ((fr)->data != ((void*)0) && t->data_free != ((void*)0)) 
+            if ((fr)->data != NULL && t->data_free != NULL) 
                 t->data_free((fr)->data); 
             if (!nofree) {
-                if ((t)->pool != ((void*)0)) (t)->pool_free((fr)); 
+                if ((t)->pool != NULL) (t)->pool_free((fr)); 
                 else ExFreePool((fr));
             } 
     }
@@ -80,8 +80,8 @@ void mln_rbtree_reset(mln_rbtree_t *t)
     mln_rbtree_node_t *fr;
     while ((fr = t->tail) != NULL) {
         mln_rbtree_chain_del(&(t->head), &(t->tail), fr);
-        mln_u32_t nofree = (fr)->nofree; if ((fr)->data != ((void*)0) && t->data_free != ((void*)0)) t->data_free((fr)->data); if (!nofree) {
-            if ((t)->pool != ((void*)0)) (t)->pool_free((fr)); else ExFreePool((fr));
+        mln_u32_t nofree = (fr)->nofree; if ((fr)->data != NULL && t->data_free != NULL) t->data_free((fr)->data); if (!nofree) {
+            if ((t)->pool != NULL) (t)->pool_free((fr)); else ExFreePool((fr));
         } 
     }
     t->root = &(t->nil);

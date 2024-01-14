@@ -843,7 +843,7 @@ static struct mln_rbtree_attr appnames_rbtree_attr = {
     .pool_alloc = NULL,
     .pool_free = NULL,
     .cmp = cmpstring_handler,
-    .data_free = ExFreePool,
+    .data_free = NULL,
 };
 
 
@@ -1850,7 +1850,7 @@ extern VOID windivert_destroy(IN WDFOBJECT object)
     {
         FwpmEngineClose0(context->engine_handle);
     }
-    windivert_free((PVOID)filter);
+
     while (!IsListEmpty(&context->flow_set))
     {
         entry = RemoveHeadList(&context->flow_set);
@@ -1869,7 +1869,13 @@ extern VOID windivert_destroy(IN WDFOBJECT object)
         mln_rbtree_reset(context->rbtree_appnames);
         mln_rbtree_free(context->rbtree_appnames);
     }
-
+    if (filter->name != NULL) {
+        windivert_free(filter->name);
+    }
+    if (filter != NULL) {
+        windivert_free(filter);
+    }
+    
 }
 
 /*
