@@ -400,3 +400,4 @@ FodyWeavers.xsd
 lwip_socks/out
 lwip_socks/build
 lwip_socks/.vscode
+/d2s-cli/build

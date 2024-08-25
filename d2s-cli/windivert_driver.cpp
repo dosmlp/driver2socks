@@ -68,7 +68,7 @@ void WindivertDriver::_run()
     uint32_t recv_size = 0;
     for (;;) {
         memset(&windivert_addr, 0, sizeof(WINDIVERT_ADDRESS));
-        if (!WinDivertRecv(w_handle_, recv_data_, WINDIVERT_MTU_MAX, &recv_size, &windivert_addr)) {
+        if (!WinDivertRecv(w_handle_, recv_data_.get(), WINDIVERT_MTU_MAX, &recv_size, &windivert_addr)) {
             std::cerr << "failed to read packet " << GetLastError() << "\n";
             break;
         }
@@ -84,17 +84,10 @@ void WindivertDriver::_run()
             continue;
         }
 
-        WinDivertHelperCalcChecksums(recv_data_, recv_size, &windivert_addr, 0);
+        WinDivertHelperCalcChecksums(recv_data_.get(), recv_size, &windivert_addr, 0);
 
-        //pbuf* buf = pbuf_alloc(PBUF_RAW, recv_size, PBUF_POOL);
-        //if (buf == NULL) {
-        //	std::cerr << "pbuf_alloc fail\n";
-        //	continue;
-        //}
-
-        //pbuf_take(buf, recv_data_, recv_size);
-        std::shared_ptr<void> buf(malloc(recv_size), [](void* p) {free(p); });
-        memcpy(buf.get(), recv_data_, recv_size);
+        std::shared_ptr<void> buf(_aligned_malloc(recv_size,16), [](void* p) {_aligned_free(p); });
+        memcpy(buf.get(), recv_data_.get(), recv_size);
         if (cb_out_data_) cb_out_data_(buf,recv_size);
     }
 
@@ -139,7 +132,8 @@ void WindivertDriver::doWrite(uint8_t *buf, size_t len)
 }
 
 WindivertDriver::WindivertDriver(const std::vector<std::string> &app_names):
-    is_stop_(true)
+    is_stop_(true),
+    recv_data_(_aligned_malloc(WINDIVERT_MTU_MAX, 16),[](void* p) {_aligned_free(p);})
 {
     app_names_ = new wchar_t[APP_NAMES_SIZE];
     memset(app_names_,0, APP_NAMES_SIZE);
@@ -150,9 +144,6 @@ WindivertDriver::WindivertDriver(const std::vector<std::string> &app_names):
         ++index;
         if (index >= APP_NAMES_SIZE) break;
     }
-
-
-    recv_data_ = _aligned_malloc(WINDIVERT_MTU_MAX, 16);
 }
 
 WindivertDriver::~WindivertDriver()
@@ -160,10 +151,7 @@ WindivertDriver::~WindivertDriver()
     is_stop_.store(true);
 
     WinDivertClose(w_handle_);
-    if (recv_data_) {
-        _aligned_free(recv_data_);
-        recv_data_ = nullptr;
-    }
+
     if (app_names_) {
         delete app_names_;
         app_names_ = nullptr;

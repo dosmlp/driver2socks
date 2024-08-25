@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.28)
 project(d2s-cli LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 
+add_subdirectory(lwip_core)
+
 add_executable(d2s-cli 
     main.cpp
     ring_buf.hpp
@@ -28,21 +30,21 @@ add_executable(d2s-cli
 target_compile_definitions(d2s-cli PRIVATE WIN32_LEAN_AND_MEAN)
 
 target_include_directories(d2s-cli PRIVATE 
-    ${LWIP_INCLUDE_DIRS} 
-    ../../driver/common 
+    lwip_core/src/include
+    ../driver/common
     asio/include 
     lwip
     include
 )
 
-# if(CMAKE_BUILD_TYPE AND (CMAKE_BUILD_TYPE STREQUAL "Debug"))
-    # target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
-        # ../../driver/x64/Debug
-    # )
-# elseif(CMAKE_BUILD_TYPE AND (CMAKE_BUILD_TYPE STREQUAL "Release"))
-    # target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
-        # ../../driver/x64/Release
-    # )
-# endif()
-target_link_libraries(d2s-cli PRIVATE lwipcore)
-target_link_libraries(d2s-cli PRIVATE "D:\\3rd\\git_repo\\driver2socks\\driver\\x64\\Release\\WinDivertLiteDll.lib" Winmm)
+if(CMAKE_BUILD_TYPE AND (CMAKE_BUILD_TYPE STREQUAL "Debug"))
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
+        ../driver/x64/Debug/WinDivertLiteDll.lib
+    )
+elseif(CMAKE_BUILD_TYPE AND (CMAKE_BUILD_TYPE STREQUAL "Release"))
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
+        "../../../driver/x64/Release/WinDivertLiteDll"
+    )
+endif()
+target_link_libraries(d2s-cli PRIVATE lwipcore Winmm)
+# target_link_libraries(d2s-cli PRIVATE "..\\driver\\x64\\Release\\WinDivertLiteDll.lib" Winmm)

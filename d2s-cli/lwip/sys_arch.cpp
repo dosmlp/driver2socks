@@ -1,9 +1,10 @@
+#include "sys_arch.h"
 #include <time.h>
 #include <Windows.h>
 #include <unordered_set>
 #include <mutex>
 
-#include "lwip/sys.h"
+ #include "lwip/sys.h"
 
 static LARGE_INTEGER freq, sys_start_time;
 static std::mutex sys_arch_pcb_sets_syncobj;
@@ -71,16 +72,16 @@ int sys_arch_pcb_is_watch(void* pcb)
 	return rc;
 }
 
-int sys_arch_pcb_unwatch(void* pcb)
+int sys_arch_pcb_unwatch(const void* pcb)
 {
-	if (NULL == pcb) {
+	if (pcb == nullptr) {
 		return 0;
 	}
 
 	int rc = 0;
 	sys_arch_pcb_sets_syncobj.lock();
 	{
-		auto tail = sys_arch_pcb_sets.find(pcb);
+		auto tail = sys_arch_pcb_sets.find(const_cast<void*>(pcb));
 		if (tail != sys_arch_pcb_sets.end()) {
 			rc = 1;
 			sys_arch_pcb_sets.erase(tail);

@@ -7,5 +7,5 @@
 
 int sys_arch_pcb_watch(void* pcb);
 int sys_arch_pcb_is_watch(void* pcb);
-int sys_arch_pcb_unwatch(void* pcb);
+int sys_arch_pcb_unwatch(const void* pcb);
 #endif /* LWIP_ARCH_SYS_ARCH_H */

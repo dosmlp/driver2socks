@@ -21,11 +21,12 @@ public:
     WindivertDriver(const std::vector<std::string> &app_names);
     ~WindivertDriver();
     void run(cb_outbound_data out);
+    //向驱动注入入站数据包
     void doWrite(std::shared_ptr<NetPacket> buffer,size_t len);
     void doWrite(uint8_t* buf, size_t len);
 private:
 	HANDLE w_handle_ = INVALID_HANDLE_VALUE;
-	void* recv_data_ = nullptr;
+    std::unique_ptr<void,void(*)(void*)> recv_data_;
 	std::thread thread_;
 	std::thread thread_2_;
 	cb_outbound_data cb_out_data_;

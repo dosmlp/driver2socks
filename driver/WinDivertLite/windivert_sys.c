@@ -5024,9 +5024,9 @@ static BOOL windivert_filter_network(PNET_BUFFER buffer, const VOID* layer_data,
         network_data->LocalPort = udp_header->SrcPort;
         network_data->RemotePort = udp_header->DstPort;
     }
-    if (protocol != WINDIVERT_IP_PROTOCOL_TCP) {
-        return FALSE;
-    }
+    //if (protocol != WINDIVERT_IP_PROTOCOL_TCP) {
+    //    return FALSE;
+    //}
     network_data->Protocol = protocol;
 
     WINDIVERT_DATA_SOCKET s;

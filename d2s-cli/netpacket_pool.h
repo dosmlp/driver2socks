@@ -1,6 +1,7 @@
 #pragma once
 #include <regex>
 #include <stdint.h>
+#include <new>
 #include "spsc_queue.h"
 
 static const uint16_t NETPACKET_DATA_SIZE = 2048;
@@ -25,13 +26,13 @@ struct  NetPacket
 	{
 		data_len = 0;
 		capacity_size = s;
-		data = (uint8_t*)malloc(s);
+        data = (uint8_t*)_aligned_malloc(s,16);
 	}
 	~NetPacket()
 	{
 		data_len = 0;
 		capacity_size = 0;
-		free(data);
+        _aligned_free(data);
 		data = nullptr;
 	}
 	/*
@@ -101,8 +102,8 @@ public:
 private:
 	NetPacketPool()
 	{
-		for (uint32_t i = 0;i < 256;++i) {
-			auto p = new NetPacket(NETPACKET_DATA_SIZE);
+        for (uint32_t i = 0;i < 256;++i) {
+            auto p = new NetPacket(NETPACKET_DATA_SIZE);
 			stack_.push(p);
 		}
 	}
