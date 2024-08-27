@@ -80,13 +80,14 @@ public:
 		static NetPacketPool pool;
 		return &pool;
 	}
-	NetPacket* getPacket()
+    NetPacket* getPacket(uint32_t size)
 	{
 		NetPacket* p = stack_.pop();
 		while (p == nullptr) {
 			p = stack_.pop();
 			std::cerr << "NetPacketPool is empty!\n";
 		}
+        p->data_len = size;
 		return p;
 	}
 	void freePacket(NetPacket* p)

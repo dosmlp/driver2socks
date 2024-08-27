@@ -349,4 +349,7 @@ void lwip_example_app_platform_assert(const char* msg, int line, const char* fil
 //#define LWIP_PLATFORM_ASSERT(x) lwip_example_app_platform_assert(x, __LINE__, __FILE__)
 #endif
 
+//#define PACK_STRUCT_BEGIN #pragma pack(push,1)
+//#define PACK_STRUCT_END #pragma pack(pop)
+
 #endif /* LWIP_LWIPOPTS_H */

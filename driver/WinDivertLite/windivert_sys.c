@@ -1869,10 +1869,8 @@ extern VOID windivert_destroy(IN WDFOBJECT object)
         mln_rbtree_reset(context->rbtree_appnames);
         mln_rbtree_free(context->rbtree_appnames);
     }
-    if (filter->name != NULL) {
-        windivert_free(filter->name);
-    }
     if (filter != NULL) {
+        windivert_free(filter->name);
         windivert_free(filter);
     }
     

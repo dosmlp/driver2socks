@@ -504,7 +504,7 @@ HANDLE WinDivertOpen(const char *app_names, WINDIVERT_LAYER layer, INT16 priorit
         return INVALID_HANDLE_VALUE;
     }
 
-    USHORT* fp = app_names;
+    USHORT* fp = (USHORT*)app_names;
     UINT16 flag = 0;
     for (;;) {
 	    if (*fp == 0) {
@@ -513,6 +513,7 @@ HANDLE WinDivertOpen(const char *app_names, WINDIVERT_LAYER layer, INT16 priorit
             --flag;
 	    }
         ++app_names_len;
+        ++fp;
         if (flag == 2) break;
     }
     // Compile & analyze the filter:

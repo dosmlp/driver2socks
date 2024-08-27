@@ -53,8 +53,6 @@ void WindivertDriver::_runInject()
 
 void WindivertDriver::_run()
 {
-    static uint32_t totla = 0;
-
     w_handle_ = WinDivertOpen((const char*)app_names_, WINDIVERT_LAYER_NETWORK, 776, 0);
     if (w_handle_ == INVALID_HANDLE_VALUE) {
         std::cerr << "INVALID_HANDLE_VALUE" << "\n";
@@ -64,33 +62,46 @@ void WindivertDriver::_run()
     WinDivertSetParam(w_handle_, WINDIVERT_PARAM_QUEUE_LENGTH, WINDIVERT_PARAM_QUEUE_LENGTH_MAX);
     WinDivertSetParam(w_handle_, WINDIVERT_PARAM_QUEUE_SIZE, WINDIVERT_PARAM_QUEUE_SIZE_MAX);
 
-    WINDIVERT_ADDRESS windivert_addr;
+    WINDIVERT_ADDRESS windivert_addr[10];
     uint32_t recv_size = 0;
     for (;;) {
-        memset(&windivert_addr, 0, sizeof(WINDIVERT_ADDRESS));
-        if (!WinDivertRecv(w_handle_, recv_data_.get(), WINDIVERT_MTU_MAX, &recv_size, &windivert_addr)) {
+        uint32_t addr_len = 10*sizeof(WINDIVERT_ADDRESS);
+        memset(windivert_addr, 0, addr_len);
+        // if (!WinDivertRecvEx(w_handle_, recv_data_.get(), WINDIVERT_MTU_MAX, &recv_size, &windivert_addr,)) {
+        //     std::cerr << "failed to read packet " << GetLastError() << "\n";
+        //     break;
+        // }
+        if (!WinDivertRecvEx(w_handle_, recv_data_.get(), 10*1500, &recv_size, 0, windivert_addr, &addr_len, nullptr)) {
             std::cerr << "failed to read packet " << GetLastError() << "\n";
             break;
         }
         if (is_stop_) return;
+        
+        uint8_t* data = (uint8_t*)recv_data_.get();
+        for (int i = 0;i < addr_len/sizeof(WINDIVERT_ADDRESS);++i) {
+            if (windivert_addr[i].Event != WINDIVERT_LAYER_NETWORK) {
+                continue;
+            }
+            if (windivert_addr[i].Network.Protocol == WINDIVERT_IP_PROTOCOL_UDP) {
+                continue;
+            }
+            if (windivert_addr[i].Network.IfIdx != 6) {
+                continue;
+            }
+            uint16_t packet_len = 0;
+            if (getPacketLen(data,packet_len)) {
+                WinDivertHelperCalcChecksums(data, packet_len, &windivert_addr[i], 0);
 
-        if (windivert_addr.Event != WINDIVERT_LAYER_NETWORK) {
-            continue;
-        }
-        if (windivert_addr.Network.Protocol == WINDIVERT_IP_PROTOCOL_UDP) {
-            continue;
-        }
-        if (windivert_addr.Network.IfIdx != 6) {
-            continue;
-        }
+                std::shared_ptr<NetPacket> buf(_NetPacketPool->getPacket(packet_len), [](NetPacket* p) {_NetPacketPool->freePacket(p); });
+                memcpy(buf->data, recv_data_.get(), packet_len);
+                if (cb_out_data_) cb_out_data_(buf,packet_len);
+                data += packet_len;
+            } else {
+                std::cerr << "getPacketLen Error\n";
+            }
 
-        WinDivertHelperCalcChecksums(recv_data_.get(), recv_size, &windivert_addr, 0);
-
-        std::shared_ptr<void> buf(_aligned_malloc(recv_size,16), [](void* p) {_aligned_free(p); });
-        memcpy(buf.get(), recv_data_.get(), recv_size);
-        if (cb_out_data_) cb_out_data_(buf,recv_size);
+        }
     }
-
 }
 
 void WindivertDriver::doWrite(std::shared_ptr<NetPacket> buffer, size_t len)
@@ -131,9 +142,25 @@ void WindivertDriver::doWrite(uint8_t *buf, size_t len)
     }
 }
 
+bool WindivertDriver::getPacketLen(uint8_t *packet, uint16_t &packet_len)
+{
+    PWINDIVERT_IPHDR ip_header = (PWINDIVERT_IPHDR)packet;
+    PWINDIVERT_IPV6HDR ipv6_header = NULL;
+    if (ip_header->Version == 4) {
+        packet_len = (UINT)ntohs(ip_header->Length);
+        return true;
+    } else if (ip_header->Version == 6) {
+        ipv6_header = (PWINDIVERT_IPV6HDR)packet;
+        packet_len = (UINT)ntohs(ipv6_header->Length) +
+                    sizeof(WINDIVERT_IPV6HDR);
+        return true;
+    }
+    return false;
+}
+
 WindivertDriver::WindivertDriver(const std::vector<std::string> &app_names):
     is_stop_(true),
-    recv_data_(_aligned_malloc(WINDIVERT_MTU_MAX, 16),[](void* p) {_aligned_free(p);})
+    recv_data_(_aligned_malloc(15008, 16),[](void* p) {_aligned_free(p);})
 {
     app_names_ = new wchar_t[APP_NAMES_SIZE];
     memset(app_names_,0, APP_NAMES_SIZE);
@@ -157,7 +184,6 @@ WindivertDriver::~WindivertDriver()
         app_names_ = nullptr;
     }
     thread_.join();
-    thread_2_.join();
 }
 
 void WindivertDriver::run(cb_outbound_data out)

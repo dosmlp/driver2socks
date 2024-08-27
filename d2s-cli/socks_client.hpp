@@ -292,11 +292,11 @@ namespace driver2socks {
 				is_writing_.store(false);
 				return;
 			}
-			std::shared_ptr<uint8_t> bf((uint8_t*)malloc(len), [](void* p) { if (p) free(p); });
+            std::shared_ptr<NetPacket> bf(_NetPacketPool->getPacket(len), [](NetPacket* p) { _NetPacketPool->freePacket(p); });
 
-			buf_send_.Read(bf.get(), len);
+            buf_send_.Read(bf->data, len);
 			auto self = shared_from_this();
-			asio::async_write(m_socket, asio::buffer(bf.get(),len), asio::transfer_exactly(len), [this,self, bf](asio::error_code ec, size_t size) {
+            asio::async_write(m_socket, asio::buffer(bf->data,len), asio::transfer_exactly(len), [this,self, bf](asio::error_code ec, size_t size) {
 				is_writing_.store(false);
 				if (ec) {
 					std::cout << "asio::async_write error:" << ec.message() << "\n";
@@ -310,7 +310,7 @@ namespace driver2socks {
 		template <typename Handler>
 		void startRecv(Handler read_callback)
 		{
-			std::shared_ptr<NetPacket> bf(_NetPacketPool->getPacket(), [](NetPacket* p) {_NetPacketPool->freePacket(p); });
+            std::shared_ptr<NetPacket> bf(_NetPacketPool->getPacket(NETPACKET_DATA_SIZE), [](NetPacket* p) {_NetPacketPool->freePacket(p); });
 			auto self = shared_from_this();
 			m_socket.async_read_some(asio::buffer(bf->data, bf->capacity_size), 
 				[self,bf,read_callback,this](asio::error_code ec, size_t size) {

@@ -215,11 +215,11 @@ namespace driver2socks {
 					cb(err);
 				});
 		}
-		inline void strand_ip_input(std::shared_ptr<void> bf,size_t size, std::function<void(err_t)> cb)
+        inline void strand_ip_input(std::shared_ptr<NetPacket> bf,size_t size, std::function<void(err_t)> cb)
 		{
 			_strand->post([=]() {
 				pbuf* p = pbuf_alloc(PBUF_RAW, size, PBUF_POOL);
-				pbuf_take(p, bf.get(), size);
+                pbuf_take(p, bf->data, size);
 				auto err = _loopback->input(p, _loopback);
 				if (cb != NULL)
 					cb(err);

@@ -93,7 +93,7 @@ struct udp_pcb {
 
 
   /*
-	8. driver2socks: Ã¿¸ö udp_pcb¶¼ÏñNATÒ»ÑùÓĞÉú´æÊ±¼ä.
+	8. driver2socks: æ¯ä¸ª udp_pcbéƒ½åƒNATä¸€æ ·æœ‰ç”Ÿå­˜æ—¶é—´.
   */
   u32_t last_active;
   u32_t max_timeout;
@@ -131,7 +131,7 @@ struct udp_pcb {
 extern struct udp_pcb *udp_pcbs;
 
 /*
-  9. driver2socks: ÒÔÏÂº¯ÊıÓÃÀ´¹ÜÀíudp_pcbµÄÉúÃüÖÜÆÚ
+  9. driver2socks: ä»¥ä¸‹å‡½æ•°ç”¨æ¥ç®¡ç†udp_pcbçš„ç”Ÿå‘½å‘¨æœŸ
 */
 void		     udp_set_timeout(struct udp_pcb* pcb, u32_t timeout);
 void	         udp_timeout(struct udp_pcb* pcb, std::function<std::remove_pointer_t<udp_timeout_fn>> timeout_fn);

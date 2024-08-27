@@ -1,5 +1,4 @@
 #include "driver2socks.h"
-
 #include <array>
 #include <cctype>
 #include <cstdio>
@@ -27,7 +26,6 @@ extern "C"{
 
 using namespace driver2socks;
 
-static bool to_read = true;
 static const Driver2SocksConfig* g_config;
 
 err_t tcp_on_recv(void* arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
@@ -152,9 +150,8 @@ void driver2socks_start(const driver2socks::Driver2SocksConfig* config) {
 
     //tcp数据注入到驱动入站方向
     LWIPStack::getInstance().set_output_function([driver](struct netif *netif, struct pbuf *p, const ip4_addr_t *ipaddr)->err_t {
-        std::shared_ptr<NetPacket> buffer(_NetPacketPool->getPacket(), [](NetPacket* p) {_NetPacketPool->freePacket(p); });
+        std::shared_ptr<NetPacket> buffer(_NetPacketPool->getPacket(p->tot_len), [](NetPacket* p) {_NetPacketPool->freePacket(p); });
         pbuf_copy_partial(p, buffer->data, p->tot_len, 0);
-        buffer->data_len = p->tot_len;
         uint16_t len = p->tot_len;
         //driver->doWrite((uint8_t*)&len, sizeof(uint16_t));
         driver->doWrite(buffer, p->tot_len);
@@ -162,9 +159,8 @@ void driver2socks_start(const driver2socks::Driver2SocksConfig* config) {
     });
     if (config->enable_ipv6) {
         LWIPStack::getInstance().set_outputv6_function([driver](struct netif* netif, struct pbuf* p, const ip6_addr_t* ipaddr)->err_t {
-            std::shared_ptr<NetPacket> buffer(_NetPacketPool->getPacket(), [](NetPacket* p) {_NetPacketPool->freePacket(p); });
+            std::shared_ptr<NetPacket> buffer(_NetPacketPool->getPacket(p->tot_len), [](NetPacket* p) {_NetPacketPool->freePacket(p); });
             pbuf_copy_partial(p, buffer->data, p->tot_len, 0);
-            buffer->data_len = p->tot_len;
             uint16_t len = p->tot_len;
             //driver->doWrite((uint8_t*)&len, sizeof(uint16_t));
             driver->doWrite(buffer, p->tot_len);
@@ -174,7 +170,7 @@ void driver2socks_start(const driver2socks::Driver2SocksConfig* config) {
 
         
     //从驱动中读取数据
-    driver->run([](std::shared_ptr<void> bf,size_t size) {
+    driver->run([](std::shared_ptr<NetPacket> bf,size_t size) {
         LWIPStack::getInstance().strand_ip_input(bf,size, [](err_t err){
 	        if (err != ERR_OK) {
                 std::cerr << "input_ip err" << std::endl;

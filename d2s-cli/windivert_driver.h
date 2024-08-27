@@ -10,7 +10,7 @@
 #include "ring_buf.hpp"
 #include "netpacket_pool.h"
 
-using cb_outbound_data = std::function<void(std::shared_ptr<void>,size_t)>;
+using cb_outbound_data = std::function<void(std::shared_ptr<NetPacket>,size_t)>;
 
 class WindivertDriver : public std::enable_shared_from_this<WindivertDriver>
 {
@@ -25,6 +25,8 @@ public:
     void doWrite(std::shared_ptr<NetPacket> buffer,size_t len);
     void doWrite(uint8_t* buf, size_t len);
 private:
+    //获取IP包的总大小
+    bool getPacketLen(uint8_t* packet,uint16_t& packet_len);
 	HANDLE w_handle_ = INVALID_HANDLE_VALUE;
     std::unique_ptr<void,void(*)(void*)> recv_data_;
 	std::thread thread_;

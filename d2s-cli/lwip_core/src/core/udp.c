@@ -739,7 +739,7 @@ udp_sendto_if_chksum(struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *dst_i
     } else {
       /* check if UDP PCB local IP address is correct
        * this could be an old address if netif->ip_addr has changed */
-       //driver2socks ²»¼ì²éudp±¾µØIPºÍÍø¿¨ÊÇ·ñÆ¥Åä
+       //driver2socks ä¸æ£€æŸ¥udpæœ¬åœ°IPå’Œç½‘å¡æ˜¯å¦åŒ¹é…
       //if (!ip4_addr_eq(ip_2_ip4(&(pcb->local_ip)), netif_ip4_addr(netif))) {
         /* local_ip doesn't match, drop the packet */
        // return ERR_RTE;
@@ -1300,7 +1300,7 @@ udp_new(void)
 #if LWIP_MULTICAST_TX_OPTIONS
     udp_set_multicast_ttl(pcb, UDP_TTL);
 #endif /* LWIP_MULTICAST_TX_OPTIONS */
-	//diver2socks ³õÊ¼»¯
+	//diver2socks åˆå§‹åŒ–
     //pcb_tci_init(pcb);
 	pcb->timeout = NULL;
 	pcb->recv = NULL;

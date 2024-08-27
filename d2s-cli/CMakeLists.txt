@@ -39,7 +39,7 @@ target_include_directories(d2s-cli PRIVATE
 
 if(CMAKE_BUILD_TYPE AND (CMAKE_BUILD_TYPE STREQUAL "Debug"))
     target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
-        ../driver/x64/Debug/WinDivertLiteDll.lib
+        "../../../driver/x64/Release/WinDivertLiteDll"
     )
 elseif(CMAKE_BUILD_TYPE AND (CMAKE_BUILD_TYPE STREQUAL "Release"))
     target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
@@ -47,4 +47,5 @@ elseif(CMAKE_BUILD_TYPE AND (CMAKE_BUILD_TYPE STREQUAL "Release"))
     )
 endif()
 target_link_libraries(d2s-cli PRIVATE lwipcore Winmm)
+target_compile_options(d2s-cli PRIVATE /utf-8)
 # target_link_libraries(d2s-cli PRIVATE "..\\driver\\x64\\Release\\WinDivertLiteDll.lib" Winmm)
