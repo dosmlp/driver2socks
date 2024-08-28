@@ -3,8 +3,9 @@
 
 static const uint32_t APP_NAMES_SIZE = 2048;
 
-void WindivertDriver::_runInject()
+void WindivertDriver::_runWrite()
 {
+using namespace std::chrono_literals;
     WINDIVERT_ADDRESS addr;
     addr.Network.IfIdx = 6;
     addr.Network.SubIfIdx = 0;
@@ -15,52 +16,29 @@ void WindivertDriver::_runInject()
     addr.Impostor = 1;
     addr.IPv6 = 0;
 
-    uint8_t* inject_data = new uint8_t[65536];
-    uint16_t inject_size = 0;
-
     for (;;) {
-        auto s = buf_inject_.GetAvailable();
-        if (s == 0) {
-            Sleep(1);
-            continue;
-        }
-        if (inject_size > 0) {
-            bool ret = buf_inject_.Read(inject_data, inject_size);
-            if (!ret) {
-                std::cout << "windivert read inject_buf fail "<<inject_size<<"Available size:"<< s <<"\n";
-                Sleep(1);
-                continue;
-            }
+        if (is_stop_.load()) return;
 
-        } else {
-            bool ret = buf_inject_.Read((uint8_t*)&inject_size, sizeof(uint16_t));
-            if (!ret) {
-                inject_size = 0;
-                std::cout << "windivert read inject_size fail\n";
-            }
+        auto buffer = queue_inject_.front();
+        if (!buffer) {
+            std::this_thread::sleep_for(1ms);
             continue;
         }
 
-        if (IP_HDR_GET_VERSION(inject_data) == 6) {
+        NetPacket::Ptr p = *buffer;
+        queue_inject_.pop();
+        if (IP_HDR_GET_VERSION(p->data) == 6) {
             addr.IPv6 = 1;
         }
-        WinDivertSend(w_handle_, inject_data, inject_size, NULL, &addr);
-        inject_size = 0;
+
+        WinDivertSend(w_handle_, p->data, p->data_len, NULL, &addr);
     }
 
 
 }
 
-void WindivertDriver::_run()
+void WindivertDriver::_runRead()
 {
-    w_handle_ = WinDivertOpen((const char*)app_names_, WINDIVERT_LAYER_NETWORK, 776, 0);
-    if (w_handle_ == INVALID_HANDLE_VALUE) {
-        std::cerr << "INVALID_HANDLE_VALUE" << "\n";
-        return;
-    }
-    WinDivertSetParam(w_handle_, WINDIVERT_PARAM_QUEUE_TIME, WINDIVERT_PARAM_QUEUE_TIME_MAX);
-    WinDivertSetParam(w_handle_, WINDIVERT_PARAM_QUEUE_LENGTH, WINDIVERT_PARAM_QUEUE_LENGTH_MAX);
-    WinDivertSetParam(w_handle_, WINDIVERT_PARAM_QUEUE_SIZE, WINDIVERT_PARAM_QUEUE_SIZE_MAX);
 
     WINDIVERT_ADDRESS windivert_addr[10];
     uint32_t recv_size = 0;
@@ -93,7 +71,7 @@ void WindivertDriver::_run()
                 WinDivertHelperCalcChecksums(data, packet_len, &windivert_addr[i], 0);
 
                 std::shared_ptr<NetPacket> buf(_NetPacketPool->getPacket(packet_len), [](NetPacket* p) {_NetPacketPool->freePacket(p); });
-                memcpy(buf->data, recv_data_.get(), packet_len);
+                memcpy(buf->data, data, packet_len);
                 if (cb_out_data_) cb_out_data_(buf,packet_len);
                 data += packet_len;
             } else {
@@ -104,16 +82,10 @@ void WindivertDriver::_run()
     }
 }
 
-void WindivertDriver::doWrite(std::shared_ptr<NetPacket> buffer, size_t len)
+void WindivertDriver::doWrite(NetPacket::Ptr buffer, size_t len)
 {
+    queue_inject_.emplace(buffer);
 #if 0
-    //std::cout << "inject_buf write size:" << len << "\n";
-        bool ret = buf_inject_.Write(buffer.get(), len);
-        //Sleep(10);
-        if (!ret) {
-            std::cout << "buf_inject write fail\n";
-        }
-#else
     WINDIVERT_ADDRESS addr;
     addr.Network.IfIdx = 6;
     addr.Network.SubIfIdx = 0;
@@ -130,16 +102,11 @@ void WindivertDriver::doWrite(std::shared_ptr<NetPacket> buffer, size_t len)
 
     WinDivertSend(w_handle_, buffer->data, len, NULL, &addr);
 #endif
-
 }
 
-void WindivertDriver::doWrite(uint8_t *buf, size_t len)
+void WindivertDriver::stop()
 {
-    //std::cout << "inject_buf write size:" << len<< " write tag:"<<*((uint16_t*)buf)<<"\n";
-    bool ret = buf_inject_.Write(buf, len);
-    if (!ret) {
-        std::cout << "buf_inject write fail2\n";
-    }
+    is_stop_.store(true);
 }
 
 bool WindivertDriver::getPacketLen(uint8_t *packet, uint16_t &packet_len)
@@ -160,17 +127,29 @@ bool WindivertDriver::getPacketLen(uint8_t *packet, uint16_t &packet_len)
 
 WindivertDriver::WindivertDriver(const std::vector<std::string> &app_names):
     is_stop_(true),
-    recv_data_(_aligned_malloc(15008, 16),[](void* p) {_aligned_free(p);})
+    recv_data_(_aligned_malloc(15008, 16),[](void* p) {_aligned_free(p);}),
+    app_names_((wchar_t*)_aligned_malloc(APP_NAMES_SIZE, 16),[](wchar_t* p) {_aligned_free(p);}),
+    queue_inject_(256)
 {
-    app_names_ = new wchar_t[APP_NAMES_SIZE];
-    memset(app_names_,0, APP_NAMES_SIZE);
+    auto apps_ptr = app_names_.get();
+    memset(apps_ptr,0, APP_NAMES_SIZE);
     uint32_t index = 0;
     for (const std::string& app_name : app_names) {
-        int char_size = MultiByteToWideChar(CP_UTF8,0,app_name.data(), app_name.length(),app_names_+index, APP_NAMES_SIZE -index);
+        int char_size = MultiByteToWideChar(CP_UTF8,0,app_name.data(), app_name.length(),apps_ptr+index, APP_NAMES_SIZE -index);
         index += char_size;
         ++index;
         if (index >= APP_NAMES_SIZE) break;
     }
+
+    w_handle_ = WinDivertOpen((const char*)apps_ptr, WINDIVERT_LAYER_NETWORK, 776, 0);
+    if (w_handle_ == INVALID_HANDLE_VALUE) {
+        std::cerr << "INVALID_HANDLE_VALUE" << "\n";
+        stop();
+        return;
+    }
+    WinDivertSetParam(w_handle_, WINDIVERT_PARAM_QUEUE_TIME, WINDIVERT_PARAM_QUEUE_TIME_MAX);
+    WinDivertSetParam(w_handle_, WINDIVERT_PARAM_QUEUE_LENGTH, WINDIVERT_PARAM_QUEUE_LENGTH_MAX);
+    WinDivertSetParam(w_handle_, WINDIVERT_PARAM_QUEUE_SIZE, WINDIVERT_PARAM_QUEUE_SIZE_MAX);
 }
 
 WindivertDriver::~WindivertDriver()
@@ -179,11 +158,8 @@ WindivertDriver::~WindivertDriver()
 
     WinDivertClose(w_handle_);
 
-    if (app_names_) {
-        delete app_names_;
-        app_names_ = nullptr;
-    }
-    thread_.join();
+    //thread_read_.join();
+    thread_write_.join();
 }
 
 void WindivertDriver::run(cb_outbound_data out)
@@ -191,7 +167,7 @@ void WindivertDriver::run(cb_outbound_data out)
     is_stop_.store(false);
 
     cb_out_data_ = out;
-    thread_ = std::thread([this]() {this->_run(); });
-    //thread_2_ = std::thread([this]() {this->_runInject(); });
-    //this->_run();
+    //thread_read_ = std::thread(std::bind(&WindivertDriver::_runRead,this));
+    thread_write_ = std::thread(std::bind(&WindivertDriver::_runWrite,this));
+    _runRead();
 }

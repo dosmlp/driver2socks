@@ -39,7 +39,7 @@ target_include_directories(d2s-cli PRIVATE
 
 if(CMAKE_BUILD_TYPE AND (CMAKE_BUILD_TYPE STREQUAL "Debug"))
     target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
-        "../../../driver/x64/Release/WinDivertLiteDll"
+        "../../../driver/x64/Debug/WinDivertLiteDll"
     )
 elseif(CMAKE_BUILD_TYPE AND (CMAKE_BUILD_TYPE STREQUAL "Release"))
     target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE

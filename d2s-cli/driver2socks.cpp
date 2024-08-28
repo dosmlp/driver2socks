@@ -177,8 +177,4 @@ void driver2socks_start(const driver2socks::Driver2SocksConfig* config) {
 	        }
         }); 
     });
-
-    system("pause");
-    //std::thread(driver2socks_dns_listen).detach();
-
 }
