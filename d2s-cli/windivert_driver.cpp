@@ -24,7 +24,6 @@ using namespace std::chrono_literals;
             std::this_thread::sleep_for(1ms);
             continue;
         }
-
         NetPacket::Ptr p = *buffer;
         queue_inject_.pop();
         if (IP_HDR_GET_VERSION(p->data) == 6) {
