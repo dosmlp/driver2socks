@@ -29,12 +29,12 @@ public:
 private:
 	HANDLE w_handle_ = INVALID_HANDLE_VALUE;
     std::unique_ptr<void,void(*)(void*)> recv_data_;
+    std::unique_ptr<void,void(*)(void*)> inject_data_;
     std::unique_ptr<wchar_t,void(*)(wchar_t*)> app_names_;
     std::thread thread_read_;
     std::thread thread_write_;
 	cb_outbound_data cb_out_data_;
     std::atomic_bool is_stop_;
-	lockfree::spsc::RingBuf<uint8_t, 4096 * 100> buf_inject_;
     SPSCQueue<NetPacket::Ptr> queue_inject_;
     //获取IP包的总大小
     bool getPacketLen(uint8_t* packet,uint16_t& packet_len);

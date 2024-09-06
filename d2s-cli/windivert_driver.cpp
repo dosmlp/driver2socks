@@ -2,35 +2,63 @@
 #include "lwip/ip.h"
 
 static const uint32_t APP_NAMES_SIZE = 2048;
+using namespace std::chrono_literals;
 
 void WindivertDriver::_runWrite()
 {
-using namespace std::chrono_literals;
-    WINDIVERT_ADDRESS addr;
-    addr.Network.IfIdx = 6;
-    addr.Network.SubIfIdx = 0;
-    addr.Outbound = 0;
-    addr.TCPChecksum = 1;
-    addr.UDPChecksum = 1;
-    addr.IPChecksum = 1;
-    addr.Impostor = 1;
-    addr.IPv6 = 0;
+
+    WINDIVERT_ADDRESS addrs[10];
+    std::memset(addrs,0,sizeof(WINDIVERT_ADDRESS)*10);
+    for (int i = 0;i < 10;++i) {
+        addrs[i].Network.IfIdx = 6;
+        addrs[i].Network.SubIfIdx = 0;
+        addrs[i].Layer = WINDIVERT_LAYER_NETWORK;
+        addrs[i].Outbound = 0;
+        addrs[i].TCPChecksum = 1;
+        addrs[i].UDPChecksum = 1;
+        addrs[i].IPChecksum = 1;
+        addrs[i].Impostor = 1;
+        addrs[i].IPv6 = 0;
+    }
+
 
     for (;;) {
         if (is_stop_.load()) return;
 
-        auto buffer = queue_inject_.front();
-        if (!buffer) {
+        size_t qsize = queue_inject_.size();
+        if (qsize < 1) {
             std::this_thread::sleep_for(1ms);
             continue;
         }
-        NetPacket::Ptr p = *buffer;
-        queue_inject_.pop();
-        if (IP_HDR_GET_VERSION(p->data) == 6) {
-            addr.IPv6 = 1;
+        if (qsize > 10) qsize = 10;
+
+        uint8_t* data = (uint8_t*)inject_data_.get();
+        uint32_t data_size = 0;
+        uint32_t packet_num = 0;
+        for (uint16_t i = 0;i < qsize;++i) {
+            auto buffer = queue_inject_.front();
+            if (buffer == nullptr) {
+                break;
+            }
+            NetPacket::Ptr p = *buffer;
+            queue_inject_.pop();
+
+            if (IP_HDR_GET_VERSION(p->data) == 6) {
+                addrs[i].IPv6 = 1;
+            }
+            //WinDivertHelperCalcChecksums(p->data, p->data_len, &addrs[i], 0);
+
+            std::memcpy(data,p->data,p->data_len);
+            data += p->data_len;
+            data_size += p->data_len;
+            ++packet_num;
         }
 
-        WinDivertSend(w_handle_, p->data, p->data_len, NULL, &addr);
+        uint32_t send_len = 0;
+        if (!WinDivertSendEx(w_handle_, inject_data_.get(), data_size, &send_len, 0, addrs, packet_num*sizeof(WINDIVERT_ADDRESS), NULL) ||
+            send_len != data_size) {
+            std::cerr << "WinDivertSendEx Fail\n";
+        }
     }
 
 
@@ -127,6 +155,7 @@ bool WindivertDriver::getPacketLen(uint8_t *packet, uint16_t &packet_len)
 WindivertDriver::WindivertDriver(const std::vector<std::string> &app_names):
     is_stop_(true),
     recv_data_(_aligned_malloc(15008, 16),[](void* p) {_aligned_free(p);}),
+    inject_data_(_aligned_malloc(15008, 16),[](void* p) {_aligned_free(p);}),
     app_names_((wchar_t*)_aligned_malloc(APP_NAMES_SIZE, 16),[](wchar_t* p) {_aligned_free(p);}),
     queue_inject_(256)
 {
