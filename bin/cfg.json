@@ -1,0 +1,8 @@
+{
+    "enable_ipv6": true,
+    "socks5server_ip": "127.0.0.1",
+    "socks5server_port": 7890,
+    "app_names":[
+        "chrome.exe","googleearth.exe"
+    ]
+}
