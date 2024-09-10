@@ -24,6 +24,7 @@ add_executable(d2s-cli
     app_config.h
     windivert_driver.h
     windivert_driver.cpp
+    mpmc_queue.h
 )
 
 

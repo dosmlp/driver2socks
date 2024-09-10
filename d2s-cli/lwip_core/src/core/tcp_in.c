@@ -314,7 +314,7 @@ tcp_input(struct pbuf *p, struct netif *inp)
 
     /* Finally, if we still did not get a match, we check all PCBs that
        are LISTENing for incoming connections. */
-	//driver2socks ½ÓÊÜËùÓÐÁ¬½Ó
+	//driver2socks æŽ¥å—æ‰€æœ‰è¿žæŽ¥
     prev = NULL;
     lpcb = tcp_listen_pcbs.listen_pcbs;
     prev = (struct tcp_pcb *)lpcb;
@@ -679,7 +679,7 @@ tcp_listen_input(struct tcp_pcb_listen *pcb)
     ip_addr_copy(npcb->local_ip, *ip_current_dest_addr());
     ip_addr_copy(npcb->remote_ip, *ip_current_src_addr());
     
-    //driver2socks ÈÃÐÂ½¨µÄtcp¶Ë¿ÚµÈÓÚÊäÈë°üµÄÄ¿±ê¶Ë¿Ú£¬½ÓÊÜËùÓÐÀ´°ü
+    //driver2socks è®©æ–°å»ºçš„tcpç«¯å£ç­‰äºŽè¾“å…¥åŒ…çš„ç›®æ ‡ç«¯å£ï¼ŒæŽ¥å—æ‰€æœ‰æ¥åŒ…
     //npcb->local_port = pcb->local_port;
 	npcb->local_port = tcphdr->dest;
     npcb->remote_port = tcphdr->src;

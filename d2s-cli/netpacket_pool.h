@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <new>
 #include "spsc_queue.h"
+#include "mpmc_queue.h"
 
 static const uint16_t NETPACKET_DATA_SIZE = 2048;
 
@@ -82,31 +83,56 @@ public:
 	}
     NetPacket* getPacket(uint32_t size)
 	{
-		NetPacket* p = stack_.pop();
+        NetPacket* p = nullptr;
+        queue_.pop(p);
 		while (p == nullptr) {
-			p = stack_.pop();
+            queue_.pop(p);
 			std::cerr << "NetPacketPool is empty!\n";
 		}
         p->data_len = size;
 		return p;
-	}
+    }
+    NetPacket::Ptr getSharedPacket(uint32_t size)
+    {
+        NetPacket* p = nullptr;
+        queue_.pop(p);
+        while (p == nullptr) {
+            queue_.pop(p);
+            std::cerr << "NetPacketPool is empty!\n";
+        }
+        p->data_len = size;
+        return std::shared_ptr<NetPacket>(p,&NetPacketPool::deletePacket);
+    }
+    static void deletePacket(NetPacket* p)
+    {
+        _NetPacketPool->freePacket(p);
+    }
 	void freePacket(NetPacket* p)
 	{
-		stack_.push(p);
+        // stack_.push(p);
+        queue_.push(p);
 	}
 	~NetPacketPool()
-	{
-		for (NetPacket* p = stack_.pop();p != nullptr;p = stack_.pop()) {
-			delete p;
-		}
+    {
+        while (!queue_.empty()) {
+            NetPacket* p = nullptr;
+            queue_.pop(p);
+            delete p;
+        }
+
 	}
 private:
-	NetPacketPool()
+    NetPacketPool():queue_(256)
 	{
         for (uint32_t i = 0;i < 256;++i) {
             auto p = new NetPacket(NETPACKET_DATA_SIZE);
-			stack_.push(p);
-		}
+            // stack_.push(p);
+
+            queue_.push(p);
+        }
+
 	}
-	LockFreeStack stack_;
+    // LockFreeStack stack_;
+
+    rigtorp::mpmc::Queue<NetPacket*> queue_;
 };
