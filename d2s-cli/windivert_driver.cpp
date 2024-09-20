@@ -42,13 +42,28 @@ void WindivertDriver::_runWrite()
             }
             NetPacket::Ptr p = *buffer;
             queue_inject_.pop();
+            uint8_t* buffer_data = p->data;
 
             if (IP_HDR_GET_VERSION(p->data) == 6) {
                 addrs[i].IPv6 = 1;
             }
-            //WinDivertHelperCalcChecksums(p->data, p->data_len, &addrs[i], 0);
+            WinDivertHelperCalcChecksums(buffer_data, p->data_len, &addrs[i], 0);
 
-            std::memcpy(data,p->data,p->data_len);
+            uint32_t key = 0;
+            uint8_t ip_version = IP_HDR_GET_VERSION(buffer_data);
+            if (ip_version == 4) {
+                key = *((uint32_t*)(buffer_data+12));
+            } else if (ip_version == 6) {
+                key = folly::crc32(buffer_data+8,16);
+            }
+            auto ifindex = map_ifindex_.find(key);
+            if (ifindex != map_ifindex_.end()) {
+                addrs[i].Network.IfIdx = ifindex->second;
+            } else {
+                std::cerr << "map_ifindex find error!\n";
+            }
+
+            std::memcpy(data,buffer_data,p->data_len);
             data += p->data_len;
             data_size += p->data_len;
             ++packet_num;
@@ -90,12 +105,19 @@ void WindivertDriver::_runRead()
             if (windivert_addr[i].Network.Protocol == WINDIVERT_IP_PROTOCOL_UDP) {
                 continue;
             }
-            if (windivert_addr[i].Network.IfIdx != 6) {
-                continue;
-            }
+
             uint16_t packet_len = 0;
             if (getPacketLen(data,packet_len)) {
                 WinDivertHelperCalcChecksums(data, packet_len, &windivert_addr[i], 0);
+
+                uint32_t key = 0;
+                uint8_t ip_version = IP_HDR_GET_VERSION(data);
+                if (ip_version == 4) {
+                    key = *((uint32_t*)(data+16));
+                } else if (ip_version == 6) {
+                    key = folly::crc32(data+24,16);
+                }
+                map_ifindex_.insert(key, windivert_addr[i].Network.IfIdx);
 
                 std::shared_ptr<NetPacket> buf(_NetPacketPool->getPacket(packet_len), [](NetPacket* p) {_NetPacketPool->freePacket(p); });
                 memcpy(buf->data, data, packet_len);
@@ -157,7 +179,8 @@ WindivertDriver::WindivertDriver(const std::vector<std::string> &app_names):
     recv_data_(_aligned_malloc(15008, 16),[](void* p) {_aligned_free(p);}),
     inject_data_(_aligned_malloc(15008, 16),[](void* p) {_aligned_free(p);}),
     app_names_((wchar_t*)_aligned_malloc(APP_NAMES_SIZE, 16),[](wchar_t* p) {_aligned_free(p);}),
-    queue_inject_(256)
+    queue_inject_(256),
+    map_ifindex_(1024)
 {
     auto apps_ptr = app_names_.get();
     memset(apps_ptr,0, APP_NAMES_SIZE);

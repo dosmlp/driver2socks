@@ -7,6 +7,7 @@
 #include <Windows.h>
 #include <fstream>
 #include "app_config.h"
+#include "adapters_info.h"
 using namespace nlohmann;
 
 #pragma comment(lib, "dbghelp.lib")
@@ -30,6 +31,10 @@ LONG unhandledExceptionFilterEx(PEXCEPTION_POINTERS pException)
 int main(int argc, char* argv)
 {
 	SetUnhandledExceptionFilter(unhandledExceptionFilterEx);
+
+    //std::vector<AdapterInterface::Ptr> cs;
+    //cs.reserve(10);
+    //GetAllAdapterInterfaces(cs);
 
     std::ifstream config_file("cfg.json",std::ios::in,std::ios::binary);
     driver2socks::Driver2SocksConfig cfg;

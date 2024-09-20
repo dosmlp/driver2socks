@@ -25,10 +25,13 @@ add_executable(d2s-cli
     windivert_driver.h
     windivert_driver.cpp
     mpmc_queue.h
+    adapters_info.h
+    vcpkg.json
+
 )
 
-
-target_compile_definitions(d2s-cli PRIVATE WIN32_LEAN_AND_MEAN)
+find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(folly CONFIG REQUIRED)
 
 target_include_directories(d2s-cli PRIVATE 
     lwip_core/src/include
@@ -47,6 +50,6 @@ elseif(CMAKE_BUILD_TYPE AND (CMAKE_BUILD_TYPE STREQUAL "Release"))
         "../../../driver/x64/Release/WinDivertLiteDll"
     )
 endif()
-target_link_libraries(d2s-cli PRIVATE lwipcore Winmm)
+target_link_libraries(d2s-cli PRIVATE Qt6::Core Folly::folly lwipcore Winmm Iphlpapi)
 target_compile_options(d2s-cli PRIVATE /utf-8)
-# target_link_libraries(d2s-cli PRIVATE "..\\driver\\x64\\Release\\WinDivertLiteDll.lib" Winmm)
+target_compile_definitions(d2s-cli PRIVATE WIN32_LEAN_AND_MEAN)

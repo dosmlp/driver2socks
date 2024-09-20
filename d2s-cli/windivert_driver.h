@@ -6,11 +6,12 @@
 #include <string>
 #include <functional>
 #include <atomic>
-#include <winsock2.h>
 
 #include "spsc_queue.h"
 #include "ring_buf.hpp"
 #include "netpacket_pool.h"
+#include <folly/AtomicHashMap.h>
+#include <folly/hash/Checksum.h>
 
 using cb_outbound_data = std::function<void(std::shared_ptr<NetPacket>,size_t)>;
 
@@ -36,6 +37,7 @@ private:
 	cb_outbound_data cb_out_data_;
     std::atomic_bool is_stop_;
     SPSCQueue<NetPacket::Ptr> queue_inject_;
+    folly::AtomicHashMap<uint32_t,uint32_t> map_ifindex_;
     //获取IP包的总大小
     bool getPacketLen(uint8_t* packet,uint16_t& packet_len);
     void _runWrite();

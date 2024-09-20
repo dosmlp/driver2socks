@@ -161,8 +161,6 @@ void driver2socks_start(const driver2socks::Driver2SocksConfig* config) {
         LWIPStack::getInstance().set_outputv6_function([driver](struct netif* netif, struct pbuf* p, const ip6_addr_t* ipaddr)->err_t {
             std::shared_ptr<NetPacket> buffer(_NetPacketPool->getPacket(p->tot_len), [](NetPacket* p) {_NetPacketPool->freePacket(p); });
             pbuf_copy_partial(p, buffer->data, p->tot_len, 0);
-            uint16_t len = p->tot_len;
-            //driver->doWrite((uint8_t*)&len, sizeof(uint16_t));
             driver->doWrite(buffer, p->tot_len);
             return ERR_OK;
             });
