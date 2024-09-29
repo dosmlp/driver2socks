@@ -4,6 +4,7 @@
 #include <new>
 #include "spsc_queue.h"
 #include "mpmc_queue.h"
+#include "base/xlog.h"
 
 static const uint16_t NETPACKET_DATA_SIZE = 2048;
 
@@ -87,7 +88,7 @@ public:
         queue_.pop(p);
 		while (p == nullptr) {
             queue_.pop(p);
-			std::cerr << "NetPacketPool is empty!\n";
+            SERROR("NetPacketPool is empty!");
 		}
         p->data_len = size;
 		return p;
@@ -98,7 +99,7 @@ public:
         queue_.pop(p);
         while (p == nullptr) {
             queue_.pop(p);
-            std::cerr << "NetPacketPool is empty!\n";
+            SERROR("NetPacketPool is empty!");
         }
         p->data_len = size;
         return std::shared_ptr<NetPacket>(p,&NetPacketPool::deletePacket);

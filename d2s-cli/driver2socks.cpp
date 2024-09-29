@@ -92,7 +92,7 @@ err_t tcp_on_accept(void *arg, struct tcp_pcb *newpcb, err_t err) {
 
 
     //创建一个socks5代理客户端并关联tcp_pcb
-    std::shared_ptr<driver2socks::socks_client> context = std::make_shared<driver2socks::socks_client>(IoContext::getIoContext());
+    std::shared_ptr<driver2socks::SocksClient> context = driver2socks::SocksClient::make(IoContext::getIoContext());
     TcpArg* targ = new TcpArg;
     targ->sc_client = context;
     newpcb->callback_arg = targ;

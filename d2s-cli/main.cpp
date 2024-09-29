@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <Windows.h>
 #include <fstream>
+#include "base/xlog.h"
+#include "base/exceptiondump.h"
 #include "app_config.h"
 #include "adapters_info.h"
 using namespace nlohmann;
@@ -28,13 +30,11 @@ LONG unhandledExceptionFilterEx(PEXCEPTION_POINTERS pException)
     }
 }
 
-int main(int argc, char* argv)
+int main(int argc, char** argv)
 {
-	SetUnhandledExceptionFilter(unhandledExceptionFilterEx);
-
-    //std::vector<AdapterInterface::Ptr> cs;
-    //cs.reserve(10);
-    //GetAllAdapterInterfaces(cs);
+    ExceptionDump::Init("./");
+    // SetUnhandledExceptionFilter(unhandledExceptionFilterEx);
+    XLogMgr::get()->InitLog("./","d2s-cli","d2s-cli");
 
     std::ifstream config_file("cfg.json",std::ios::in,std::ios::binary);
     driver2socks::Driver2SocksConfig cfg;

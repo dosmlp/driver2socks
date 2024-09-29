@@ -15,7 +15,7 @@ include(src/Filelists.cmake)
 
 add_library(lwipcore STATIC ${lwipcore_SRCS} ${lwipcore4_SRCS} ${lwipcore6_SRCS})
 # set_target_properties(lwipcore PROPERTIES LANGUAGE CXX LINKER_LANGUAGE CXX)
-target_compile_options(lwipcore PRIVATE /utf-8 /TP)
+target_compile_options(lwipcore PRIVATE /utf-8 /TP /wd4103)
 target_include_directories(lwipcore PRIVATE ${LWIP_INCLUDE_DIRS})
 
 # set (LWIP_DEFINITIONS LWIP_DEBUG=1)

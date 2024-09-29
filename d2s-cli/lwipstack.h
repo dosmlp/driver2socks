@@ -22,12 +22,13 @@ extern "C"{
 #include "sys_arch.h"
 #include "spsc_queue.h"
 #include "netpacket_pool.h"
+#include "base/xlog.h"
 
 namespace driver2socks {
 	using namespace std::chrono_literals;
 	struct TcpArg
 	{
-		std::shared_ptr<socks_client> sc_client;
+        std::shared_ptr<SocksClient> sc_client;
 		SPSCQueue<NetPacket::Ptr> queue_send{256};
 	};
 	class LWIPStack {
@@ -174,8 +175,8 @@ namespace driver2socks {
 				
 				TcpArg* ta = (TcpArg*)(pcb->callback_arg);
 				bool ret = ta->queue_send.try_emplace(buff);
-				if (!ret) {
-					std::cout << "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n";
+                if (!ret) {
+                    SERROR("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
 				}
 				
 				while (!ta->queue_send.empty()) {
@@ -186,8 +187,8 @@ namespace driver2socks {
 					}
 					err = LWIPStack::lwip_tcp_write(pcb, np->data, np->data_len, apiflags);
 					err_t err_out = tcp_output(pcb);
-					if (err_out != ERR_OK) {
-						std::cout << "tcp_output fail:" << err_out << "\n";
+                    if (err_out != ERR_OK) {
+                        SERROR("tcp_output fail:{}",err_out);
 					}
 					if (err != ERR_OK) {
 						break;

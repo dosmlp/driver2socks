@@ -1,9 +1,14 @@
 cmake_minimum_required(VERSION 3.28)
 
 project(d2s-cli LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 20)
+
+#QTDIR=X:/Qt/6.7.2/msvc2019_64
+list(APPEND CMAKE_PREFIX_PATH $ENV{QTDIR})
+# set(CMAKE_CXX_STANDARD 20)
+
 
 add_subdirectory(lwip_core)
+add_subdirectory(base)
 
 add_executable(d2s-cli 
     main.cpp
@@ -27,18 +32,20 @@ add_executable(d2s-cli
     mpmc_queue.h
     adapters_info.h
     vcpkg.json
-
 )
 
 find_package(Qt6 REQUIRED COMPONENTS Core)
 find_package(folly CONFIG REQUIRED)
+find_package(asio CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
+find_package(async_simple CONFIG REQUIRED)
+
 
 target_include_directories(d2s-cli PRIVATE 
     lwip_core/src/include
     ../driver/common
-    asio/include 
     lwip
-    include
+    base
 )
 
 if(CMAKE_BUILD_TYPE AND (CMAKE_BUILD_TYPE STREQUAL "Debug"))
@@ -50,6 +57,11 @@ elseif(CMAKE_BUILD_TYPE AND (CMAKE_BUILD_TYPE STREQUAL "Release"))
         "../../../driver/x64/Release/WinDivertLiteDll"
     )
 endif()
-target_link_libraries(d2s-cli PRIVATE Qt6::Core Folly::folly lwipcore Winmm Iphlpapi)
+target_link_libraries(d2s-cli PRIVATE
+    Qt6::Core
+    Folly::folly
+    async_simple::async_simple_header_only
+    base
+    lwipcore Winmm Iphlpapi)
 target_compile_options(d2s-cli PRIVATE /utf-8)
 target_compile_definitions(d2s-cli PRIVATE WIN32_LEAN_AND_MEAN)

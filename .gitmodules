@@ -1,0 +1,3 @@
+[submodule "d2s-cli/base"]
+	path = d2s-cli/base
+	url = git@github.com:dosmlp/base.git

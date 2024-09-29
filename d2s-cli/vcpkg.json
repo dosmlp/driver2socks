@@ -1,8 +1,12 @@
 {
-  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
-  "name": "mypackage",
-  "version-string": "0.0.1",
-  "dependencies": [
-    "folly"
-  ]
+    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+    "dependencies": [
+        "folly",
+        "nlohmann-json",
+        "asio",
+        "async-simple",
+        "mbedtls",
+        "spdlog",
+        "minhook"
+    ]
 }

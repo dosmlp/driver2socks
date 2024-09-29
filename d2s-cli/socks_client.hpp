@@ -13,6 +13,7 @@
 #include "iocontext.h"
 #include "ring_buf.hpp"
 #include "netpacket_pool.h"
+#include "base/xlog.h"
 
 namespace driver2socks {
 
@@ -208,9 +209,15 @@ namespace driver2socks {
 		bool udp_associate;
 	};
 
-	class socks_client : public std::enable_shared_from_this<socks_client>
+    class SocksClient : public std::enable_shared_from_this<SocksClient>
 	{
 	public:
+        typedef std::shared_ptr<SocksClient> Ptr;
+        template<typename... Args>
+        static Ptr make(Args&&... args)
+        {
+            return std::make_shared<SocksClient>(std::forward<Args>(args)...);
+        }
 		tcp_pcb* lwip_tcp_pcb_ = nullptr;
 		enum {
 			SOCKS_VERSION_4 = 4,
@@ -255,10 +262,10 @@ namespace driver2socks {
 		};
 
 	public:
-		explicit socks_client(asio::io_context& io):m_socket(io)
+        explicit SocksClient(asio::io_context& io):m_socket(io)
 		{
 		}
-		~socks_client()
+        ~SocksClient()
 		{
 			m_socket.close();
 			lwip_tcp_pcb_ = nullptr;
@@ -299,7 +306,7 @@ namespace driver2socks {
             asio::async_write(m_socket, asio::buffer(bf->data,len), asio::transfer_exactly(len), [this,self, bf](asio::error_code ec, size_t size) {
 				is_writing_.store(false);
 				if (ec) {
-					std::cout << "asio::async_write error:" << ec.message() << "\n";
+                    SERROR("asio::async_write error:{}",ec.message());
 					self->m_socket.close();
 					//handler(ec, std::shared_ptr<void>(nullptr), 0, self->lwip_tcp_pcb_);
 				} else {
@@ -315,7 +322,7 @@ namespace driver2socks {
 			m_socket.async_read_some(asio::buffer(bf->data, bf->capacity_size), 
 				[self,bf,read_callback,this](asio::error_code ec, size_t size) {
 				if (ec) {
-					std::cout << "socket async_read_some error:" << ec.message() << "\n";
+                    SERROR("socket async_read_some error:{}",ec.message());
 					self->m_socket.close();
 					read_callback(ec, std::shared_ptr<NetPacket>(nullptr), 0, self->lwip_tcp_pcb_);
 				} else {
@@ -352,9 +359,9 @@ namespace driver2socks {
 			*/
 			async_do_proxy(socks_addr,handler).start([read,this,self](async_simple::Try<void> Result) {
 					if (Result.hasError()) {
-						std::cout << "Error Happened in async_do_proxy.\n";
+                    SERROR("Error Happened in async_do_proxy.");
 					} else {
-						std::cout << "async_do_proxy completed successfully.\n";
+                        SERROR("async_do_proxy completed successfully.");
 						do_proxy_done = true;
 						startRecv(read);
 						startSend();
@@ -368,8 +375,8 @@ namespace driver2socks {
 		{
 			auto ec = co_await async_connect(IoContext::getIoContext(), m_socket, content->host, content->port);
 			//auto ec = co_await async_connect(IoContext::getIoContext(), m_socket, content->proxy_address, content->proxy_port);
-			if (ec) {
-				std::cout << "Connect error: " << ec.message() << '\n';
+            if (ec) {
+                SERROR("Connect error:{}",ec.message());
 				handler(driver2socks::errc::socks_connect_proxy_fail);
 				co_return;
 			}
