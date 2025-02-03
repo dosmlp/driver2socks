@@ -1,3 +1,4 @@
+# 本仓库暂停维护，最新请移步 https://gitee.com/dosmlp/drv2socks
 # driver2socks
 在驱动层拦截指定应用的流量转发到socks5服务器实现socks5代理的效果
 
